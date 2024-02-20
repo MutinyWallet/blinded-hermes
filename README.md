@@ -1,12 +1,5 @@
 # Blind Hermes Service
 
-## Design
-
-### Redeem flow
-
-![](docs/images/BlindedAuthentication-Redeem.png)
-
-
 ## Usage
 
 You need a postgres database and an authentication key. These can be set in the environment variables `DATABASE_URL`
