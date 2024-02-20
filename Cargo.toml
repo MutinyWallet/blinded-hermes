@@ -1,0 +1,35 @@
+[package]
+name = "blinded-hermes"
+version = "0.1.0"
+edition = "2021"
+authors = ["Tony Giorgio <tony@mutinywallet.com>", "benthecarman <ben@mutinywallet.com>"]
+description = " Blinded Hermes"
+
+[features]
+integration-tests = []
+
+[dependencies]
+anyhow = "1.0"
+axum = { version = "0.6.16", features = ["headers"] }
+base64 = "0.13.1"
+chrono = { version = "0.4.26", features = ["serde"] }
+diesel = { version = "2.1", features = ["postgres", "postgres_backend", "r2d2", "chrono", "numeric"] }
+dotenv = "0.15.0"
+fedimint-tbs = "0.2.2"
+futures = "0.3.28"
+hex = "0.4.3"
+jwt-compact = { version = "0.8.0", features = ["es256k"] }
+log = "0.4.20"
+pretty_env_logger = "0.5"
+secp256k1 = { version = "0.28.2", default-features = false, features = ["hashes", "alloc"] }
+sha2 = { version = "0.10", default-features = false }
+serde = { version = "^1.0", features = ["derive"] }
+serde_json = "1.0.67"
+reqwest = { version = "0.11", features = ["json"] }
+tokio = { version = "1.12.0", features = ["full"] }
+tower-http = { version = "0.4.0", features = ["cors"] }
+async-trait = "0.1.59"
+
+[dev-dependencies]
+mockall = "0.11.2"
+mockito = "1.2.0"
