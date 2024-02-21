@@ -5,10 +5,8 @@ diesel::table! {
         id -> Int4,
         #[max_length = 64]
         pubkey -> Varchar,
-        #[max_length = 20]
+        #[max_length = 255]
         name -> Varchar,
-        #[max_length = 5]
-        dm_type -> Varchar,
         #[max_length = 64]
         federation_id -> Varchar,
         #[max_length = 255]

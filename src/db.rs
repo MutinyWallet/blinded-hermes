@@ -1,12 +1,15 @@
-use diesel::{pg::PgConnection, r2d2::ConnectionManager, r2d2::Pool, Connection};
+use diesel::{pg::PgConnection, r2d2::ConnectionManager, r2d2::Pool};
 use std::sync::Arc;
 
 #[cfg(test)]
 use mockall::{automock, predicate::*};
 
+use crate::models::app_user::{AppUser, NewAppUser};
+
 #[cfg_attr(test, automock)]
 pub(crate) trait DBConnection {
-    // fn get_services(&self) -> anyhow::Result<Vec<Service>>;
+    fn check_name_available(&self, name: String) -> anyhow::Result<bool>;
+    fn insert_new_user(&self, name: NewAppUser) -> anyhow::Result<AppUser>;
 }
 
 pub(crate) struct PostgresConnection {
@@ -14,12 +17,15 @@ pub(crate) struct PostgresConnection {
 }
 
 impl DBConnection for PostgresConnection {
-    /*
-    fn get_services(&self) -> anyhow::Result<Vec<Service>> {
+    fn check_name_available(&self, name: String) -> anyhow::Result<bool> {
         let conn = &mut self.db.get()?;
-        Service::get_services(conn)
+        AppUser::check_available_name(conn, name)
     }
-    */
+
+    fn insert_new_user(&self, new_user: NewAppUser) -> anyhow::Result<AppUser> {
+        let conn = &mut self.db.get()?;
+        new_user.insert(conn)
+    }
 }
 
 pub(crate) fn setup_db(url: String) -> Arc<dyn DBConnection + Send + Sync> {
