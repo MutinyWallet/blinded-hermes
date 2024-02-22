@@ -1,6 +1,7 @@
 use crate::{
-    register::check_available, State, ALLOWED_LOCALHOST, ALLOWED_ORIGINS, ALLOWED_SUBDOMAIN,
-    API_VERSION,
+    models::app_user::NewAppUser,
+    register::{check_available, register},
+    State, ALLOWED_LOCALHOST, ALLOWED_ORIGINS, ALLOWED_SUBDOMAIN, API_VERSION,
 };
 use axum::extract::Path;
 use axum::headers::Origin;
@@ -8,7 +9,7 @@ use axum::http::StatusCode;
 use axum::Extension;
 use axum::{Json, TypedHeader};
 use log::{debug, error};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub async fn check_username(
     origin: Option<TypedHeader<Origin>>,
@@ -21,6 +22,42 @@ pub async fn check_username(
     match check_available(&state, username).await {
         Ok(res) => Ok(Json(res)),
         Err(e) => Err(handle_anyhow_error("check_username", e)),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct RegisterRequest {
+    pub name: String,
+    pub pubkey: String,
+    pub federation_id: String,
+    pub federation_invite_code: String,
+    // TODO blinded message info
+}
+
+impl From<RegisterRequest> for NewAppUser {
+    fn from(request: RegisterRequest) -> Self {
+        NewAppUser {
+            pubkey: request.pubkey,
+            name: request.name,
+            federation_id: request.federation_id,
+            federation_invite_code: request.federation_invite_code,
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct RegisterResponse {}
+
+pub async fn register_route(
+    origin: Option<TypedHeader<Origin>>,
+    Extension(state): Extension<State>,
+    Json(req): Json<RegisterRequest>,
+) -> Result<Json<RegisterResponse>, (StatusCode, String)> {
+    debug!("register");
+    validate_cors(origin)?;
+    match register(&state, req) {
+        Ok(res) => Ok(Json(res)),
+        Err(e) => Err(e),
     }
 }
 
