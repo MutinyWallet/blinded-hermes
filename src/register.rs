@@ -85,10 +85,13 @@ mod tests {
 
 #[cfg(all(test, feature = "integration-tests"))]
 mod tests_integration {
+    use std::sync::Arc;
+
     use secp256k1::Secp256k1;
 
     use crate::{
         db::setup_db,
+        mint::MockMultiMintWrapperTrait,
         models::app_user::NewAppUser,
         register::{check_available, register},
         routes::RegisterRequest,
@@ -96,12 +99,17 @@ mod tests_integration {
     };
 
     #[tokio::test]
-    async fn test_username_checker() {
+    pub async fn test_username_checker() {
         dotenv::dotenv().ok();
         let pg_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
         let db = setup_db(pg_url);
+
+        // jwap out fm with a mock here since that's not what is being tested
+        let mock_mm = Arc::new(MockMultiMintWrapperTrait::new());
+
         let state = State {
             db: db.clone(),
+            mm: mock_mm,
             secp: Secp256k1::new(),
         };
 
@@ -127,12 +135,17 @@ mod tests_integration {
     }
 
     #[tokio::test]
-    async fn register_username_tests() {
+    pub async fn register_username_tests() {
         dotenv::dotenv().ok();
         let pg_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
         let db = setup_db(pg_url);
+
+        // jwap out fm with a mock here since that's not what is being tested
+        let mock_mm = Arc::new(MockMultiMintWrapperTrait::new());
+
         let state = State {
             db: db.clone(),
+            mm: mock_mm,
             secp: Secp256k1::new(),
         };
 

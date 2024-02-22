@@ -29,6 +29,9 @@
             pkgs.postgresql
             pkgs.gcc
             pkgs.gcc.cc.lib
+            pkgs.pkg-config
+            pkgs.libclang.lib
+            pkgs.clang
           ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
             pkgs.libiconv
           ];
@@ -53,6 +56,13 @@
           fi
         '';
 
+	setupFedimintTestDirScript = pkgs.writeShellScript "setup-fedimint-test-dir" ''
+          if [ -d .fedimint-test-dir ]; then
+            rm -rf .fedimint-test-dir
+          fi
+          mkdir -m 700 .fedimint-test-dir
+        '';
+
       in
       {
         packages.default = my-crate;
@@ -69,14 +79,18 @@
             pkgs.rust-analyzer
             pkgs.diesel-cli
             pkgs.gcc.cc.lib
+            pkgs.pkg-config
+            pkgs.libclang.lib
+            pkgs.clang
           ];
           shellHook = ''
-	    export LIBCLANG_PATH=${pkgs.libclang.lib}/lib/
+            export LIBCLANG_PATH="${pkgs.libclang.lib}/lib"
             export LD_LIBRARY_PATH=${pkgs.openssl}/bin:${pkgs.gcc.cc.lib}/lib:$LD_LIBRARY_PATH
             export PKG_CONFIG_PATH=${pkgs.openssl.dev}/lib/pkgconfig
             
             ${setupPostgresScript}
             ${setupEnvScript}
+            ${setupFedimintTestDirScript}
           '';
         };
       });
