@@ -1,12 +1,28 @@
-use crate::{ALLOWED_LOCALHOST, ALLOWED_ORIGINS, ALLOWED_SUBDOMAIN, API_VERSION};
-use axum::headers::authorization::Bearer;
-use axum::headers::{Authorization, Origin};
+use crate::{
+    register::check_available, State, ALLOWED_LOCALHOST, ALLOWED_ORIGINS, ALLOWED_SUBDOMAIN,
+    API_VERSION,
+};
+use axum::extract::Path;
+use axum::headers::Origin;
 use axum::http::StatusCode;
 use axum::Extension;
 use axum::{Json, TypedHeader};
 use log::{debug, error};
-use serde::{Deserialize, Serialize};
-use tbs::{BlindedMessage, BlindedSignature};
+use serde::Serialize;
+
+pub async fn check_username(
+    origin: Option<TypedHeader<Origin>>,
+    Extension(state): Extension<State>,
+    Path(username): Path<String>,
+) -> Result<Json<bool>, (StatusCode, String)> {
+    debug!("check_username: {}", username);
+    validate_cors(origin)?;
+
+    match check_available(&state, username).await {
+        Ok(res) => Ok(Json(res)),
+        Err(e) => Err(handle_anyhow_error("check_username", e)),
+    }
+}
 
 #[derive(Serialize)]
 pub struct HealthResponse {

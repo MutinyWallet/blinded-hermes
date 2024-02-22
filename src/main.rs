@@ -1,11 +1,10 @@
 use axum::extract::DefaultBodyLimit;
 use axum::headers::Origin;
 use axum::http::{request::Parts, HeaderValue, Method, StatusCode, Uri};
-use axum::routing::{get, post};
+use axum::routing::get;
 use axum::{http, Extension, Router, TypedHeader};
 use log::{error, info};
-use secp256k1::{All, PublicKey, Secp256k1};
-use std::collections::HashMap;
+use secp256k1::{All, Secp256k1};
 use std::sync::Arc;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::oneshot;
@@ -13,10 +12,12 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use crate::{
     db::{setup_db, DBConnection},
-    routes::{health_check, valid_origin, validate_cors},
+    routes::{check_username, health_check, valid_origin, validate_cors},
 };
 
 mod db;
+mod models;
+mod register;
 mod routes;
 
 const ALLOWED_ORIGINS: [&str; 6] = [
@@ -81,6 +82,7 @@ async fn main() -> anyhow::Result<()> {
 
     let server_router = Router::new()
         .route("/health-check", get(health_check))
+        .route("/check-username/:username", get(check_username))
         .fallback(fallback)
         .layer(
             CorsLayer::new()

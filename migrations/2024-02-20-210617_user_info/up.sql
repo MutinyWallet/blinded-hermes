@@ -1,8 +1,7 @@
 CREATE TABLE app_user (
     id SERIAL PRIMARY KEY,
     pubkey VARCHAR(64) NOT NULL,
-    name VARCHAR(20) NOT NULL,
-    dm_type VARCHAR(5) NOT NULL,
+    name VARCHAR(255) NOT NULL UNIQUE,
     federation_id VARCHAR(64) NOT NULL,
     federation_invite_code VARCHAR(255) NOT NULL
 );
