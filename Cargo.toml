@@ -15,7 +15,9 @@ base64 = "0.13.1"
 chrono = { version = "0.4.26", features = ["serde"] }
 diesel = { version = "2.1", features = ["postgres", "postgres_backend", "r2d2", "chrono", "numeric"] }
 dotenv = "0.15.0"
+async-trait = "0.1.77"
 fedimint-tbs = "0.2.2"
+fedimint-core = "0.2.2"
 futures = "0.3.28"
 hex = "0.4.3"
 jwt-compact = { version = "0.8.0", features = ["es256k"] }
@@ -28,7 +30,6 @@ serde_json = "1.0.67"
 reqwest = { version = "0.11", features = ["json"] }
 tokio = { version = "1.12.0", features = ["full"] }
 tower-http = { version = "0.4.0", features = ["cors"] }
-async-trait = "0.1.59"
 lazy-regex = "3.1.0"
 multimint = { git = "https://github.com/Kodylow/multimint", rev = "00df9d34f0244d0200eee4d285094b22b34cf38b" }
 

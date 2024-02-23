@@ -8,6 +8,7 @@ use axum::headers::Origin;
 use axum::http::StatusCode;
 use axum::Extension;
 use axum::{Json, TypedHeader};
+use fedimint_core::config::FederationId;
 use log::{debug, error};
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +20,7 @@ pub async fn check_username(
     debug!("check_username: {}", username);
     validate_cors(origin)?;
 
-    match check_available(&state, username).await {
+    match check_available(&state, username) {
         Ok(res) => Ok(Json(res)),
         Err(e) => Err(handle_anyhow_error("check_username", e)),
     }
@@ -29,7 +30,7 @@ pub async fn check_username(
 pub struct RegisterRequest {
     pub name: String,
     pub pubkey: String,
-    pub federation_id: String,
+    pub federation_id: FederationId,
     pub federation_invite_code: String,
     // TODO blinded message info
 }
@@ -39,7 +40,7 @@ impl From<RegisterRequest> for NewAppUser {
         NewAppUser {
             pubkey: request.pubkey,
             name: request.name,
-            federation_id: request.federation_id,
+            federation_id: request.federation_id.to_string(),
             federation_invite_code: request.federation_invite_code,
         }
     }
@@ -55,7 +56,7 @@ pub async fn register_route(
 ) -> Result<Json<RegisterResponse>, (StatusCode, String)> {
     debug!("register");
     validate_cors(origin)?;
-    match register(&state, req) {
+    match register(&state, req).await {
         Ok(res) => Ok(Json(res)),
         Err(e) => Err(e),
     }

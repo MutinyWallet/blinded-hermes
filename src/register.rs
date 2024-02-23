@@ -1,8 +1,10 @@
+use std::str::FromStr;
+
 use crate::{
-    models::app_user::NewAppUser,
     routes::{RegisterRequest, RegisterResponse},
     State,
 };
+use fedimint_core::api::InviteCode;
 use lazy_regex::*;
 use log::error;
 use reqwest::StatusCode;
@@ -18,7 +20,7 @@ pub fn is_valid_name(name: &str) -> bool {
     ALPHANUMERIC_REGEX.is_match(name)
 }
 
-pub async fn check_available(state: &State, name: String) -> anyhow::Result<bool> {
+pub fn check_available(state: &State, name: String) -> anyhow::Result<bool> {
     if !is_valid_name(&name) {
         return Ok(false);
     }
@@ -26,7 +28,7 @@ pub async fn check_available(state: &State, name: String) -> anyhow::Result<bool
     state.db.check_name_available(name)
 }
 
-pub fn register(
+pub async fn register(
     state: &State,
     req: RegisterRequest,
 ) -> Result<RegisterResponse, (StatusCode, String)> {
@@ -47,11 +49,28 @@ pub fn register(
 
     // TODO verify blinded info
 
-    let new_app_user: NewAppUser = req.into();
+    // make sure the federation is either already added or connectable
+    if !state.mm.check_has_federation(req.federation_id).await {
+        let invite_code = match InviteCode::from_str(&req.federation_invite_code) {
+            Ok(i) => i,
+            Err(e) => {
+                error!("Error in register: {e:?}");
+                return Err((StatusCode::BAD_REQUEST, "InvalidFederation".to_string()));
+            }
+        };
+
+        match state.mm.register_new_federation(invite_code).await {
+            Ok(_) => (),
+            Err(e) => {
+                error!("Error in register: {e:?}");
+                return Err((StatusCode::BAD_REQUEST, "InvalidFederation".to_string()));
+            }
+        }
+    }
 
     // TODO insert blinding info and new user as an atomic transaction
 
-    match state.db.insert_new_user(new_app_user) {
+    match state.db.insert_new_user(req.into()) {
         Ok(_) => Ok(RegisterResponse {}),
         Err(e) => {
             error!("Errorgister: {e:?}");
@@ -85,8 +104,9 @@ mod tests {
 
 #[cfg(all(test, feature = "integration-tests"))]
 mod tests_integration {
-    use std::sync::Arc;
+    use std::{str::FromStr, sync::Arc};
 
+    use fedimint_core::{api::InviteCode, config::FederationId, PeerId};
     use secp256k1::Secp256k1;
 
     use crate::{
@@ -114,7 +134,7 @@ mod tests_integration {
         };
 
         let name = "veryuniquename123".to_string();
-        let available = check_available(&state, name).await.expect("should get");
+        let available = check_available(&state, name).expect("should get");
         assert!(available);
 
         let commonname = "commonname".to_string();
@@ -128,9 +148,7 @@ mod tests_integration {
         // don't care about error if already exists
         let _ = state.db.insert_new_user(common_app_user);
 
-        let available = check_available(&state, commonname)
-            .await
-            .expect("should get");
+        let available = check_available(&state, commonname).expect("should get");
         assert!(!available);
     }
 
@@ -140,23 +158,78 @@ mod tests_integration {
         let pg_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
         let db = setup_db(pg_url);
 
-        // jwap out fm with a mock here since that's not what is being tested
-        let mock_mm = Arc::new(MockMultiMintWrapperTrait::new());
+        // swap out fm with a mock here since that's not what is being tested
+        let mut mock_mm = MockMultiMintWrapperTrait::new();
+        mock_mm
+            .expect_check_has_federation()
+            .times(1)
+            .returning(|_| true);
 
+        let mock_mm = Arc::new(mock_mm);
         let state = State {
             db: db.clone(),
             mm: mock_mm,
             secp: Secp256k1::new(),
         };
 
+        let connect = InviteCode::new(
+            "ws://test1".parse().unwrap(),
+            PeerId::from_str("1").unwrap(),
+            FederationId::dummy(),
+        );
         let req = RegisterRequest {
             name: "registername".to_string(),
             pubkey: "".to_string(),
-            federation_id: "".to_string(),
-            federation_invite_code: "".to_string(),
+            federation_id: connect.federation_id(),
+            federation_invite_code: connect.to_string(),
         };
 
-        match register(&state, req) {
+        match register(&state, req).await {
+            Ok(_) => (),
+            Err(_) => {
+                panic!("shouldn't error")
+            }
+        }
+    }
+
+    #[tokio::test]
+    pub async fn register_username_add_unknown_federation_tests() {
+        dotenv::dotenv().ok();
+        let pg_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        let db = setup_db(pg_url);
+
+        // swap out fm with a mock here since that's not what is being tested
+        let mut mock_mm = MockMultiMintWrapperTrait::new();
+        mock_mm
+            .expect_check_has_federation()
+            .times(1)
+            .returning(|_| false);
+
+        mock_mm
+            .expect_register_new_federation()
+            .times(1)
+            .returning(|_| Ok(()));
+
+        let mock_mm = Arc::new(mock_mm);
+        let state = State {
+            db: db.clone(),
+            mm: mock_mm,
+            secp: Secp256k1::new(),
+        };
+
+        let connect = InviteCode::new(
+            "ws://test1".parse().unwrap(),
+            PeerId::from_str("1").unwrap(),
+            FederationId::dummy(),
+        );
+        let req = RegisterRequest {
+            name: "newfederationusername".to_string(),
+            pubkey: "".to_string(),
+            federation_id: connect.federation_id(),
+            federation_invite_code: connect.to_string(),
+        };
+
+        match register(&state, req).await {
             Ok(_) => (),
             Err(_) => {
                 panic!("shouldn't error")

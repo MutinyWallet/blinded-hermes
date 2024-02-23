@@ -446,6 +446,7 @@ dependencies = [
  "chrono",
  "diesel",
  "dotenv",
+ "fedimint-core",
  "fedimint-tbs",
  "futures",
  "hex",
