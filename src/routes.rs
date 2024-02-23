@@ -1,5 +1,7 @@
 use crate::{
+    lnurlp::well_known_lnurlp,
     models::app_user::NewAppUser,
+    nostr::well_known_nip5,
     register::{check_available, register},
     State, ALLOWED_LOCALHOST, ALLOWED_ORIGINS, ALLOWED_SUBDOMAIN, API_VERSION,
 };
@@ -9,8 +11,12 @@ use axum::http::StatusCode;
 use axum::Extension;
 use axum::{Json, TypedHeader};
 use fedimint_core::config::FederationId;
+use fedimint_core::Amount;
 use log::{debug, error};
+use nostr::prelude::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use url::Url;
 
 pub async fn check_username(
     origin: Option<TypedHeader<Origin>>,
@@ -59,6 +65,67 @@ pub async fn register_route(
     match register(&state, req).await {
         Ok(res) => Ok(Json(res)),
         Err(e) => Err(e),
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct UserWellKnownNip5Req {
+    pub name: String,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct UserWellKnownNip5Resp {
+    pub names: HashMap<String, XOnlyPublicKey>,
+}
+
+pub async fn well_known_nip5_route(
+    Extension(state): Extension<State>,
+    Json(req): Json<UserWellKnownNip5Req>,
+) -> Result<Json<UserWellKnownNip5Resp>, (StatusCode, String)> {
+    debug!("well_known_route");
+    match well_known_nip5(&state, req.name) {
+        Ok(res) => Ok(Json(UserWellKnownNip5Resp { names: res })),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LnurlType {
+    PayRequest,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum LnurlStatus {
+    Ok,
+    Error,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LnurlWellKnownResponse {
+    pub callback: Url,
+    pub max_sendable: Amount,
+    pub min_sendable: Amount,
+    pub metadata: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment_allowed: Option<i32>,
+    pub tag: LnurlType,
+    pub status: LnurlStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nostr_pubkey: Option<XOnlyPublicKey>,
+    pub allows_nostr: bool,
+}
+
+pub async fn well_known_lnurlp_route(
+    Extension(state): Extension<State>,
+    Path(username): Path<String>,
+) -> Result<Json<LnurlWellKnownResponse>, (StatusCode, String)> {
+    debug!("well_known_route");
+    match well_known_lnurlp(&state, username).await {
+        Ok(res) => Ok(Json(res)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
     }
 }
 

@@ -4,7 +4,7 @@ use axum::routing::get;
 use axum::{extract::DefaultBodyLimit, routing::post};
 use axum::{http, Extension, Router, TypedHeader};
 use log::{error, info};
-use nostr::{key::FromSkStr, Keys};
+use nostr_sdk::nostr::{key::FromSkStr, Keys};
 use secp256k1::{All, Secp256k1};
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 use tokio::signal::unix::{signal, SignalKind};
@@ -15,13 +15,18 @@ use crate::{
     db::{setup_db, DBConnection},
     invoice::handle_pending_invoices,
     mint::{setup_multimint, MultiMintWrapperTrait},
-    routes::{check_username, health_check, register_route, valid_origin, validate_cors},
+    routes::{
+        check_username, health_check, register_route, valid_origin, validate_cors,
+        well_known_lnurlp_route, well_known_nip5_route,
+    },
 };
 
 mod db;
 mod invoice;
+mod lnurlp;
 mod mint;
 mod models;
+mod nostr;
 mod register;
 mod routes;
 
@@ -51,6 +56,7 @@ pub struct State {
     mm: Arc<dyn MultiMintWrapperTrait + Send + Sync>,
     pub secp: Secp256k1<All>,
     pub nostr: nostr_sdk::Client,
+    pub domain: String,
 }
 
 #[tokio::main]
@@ -83,6 +89,11 @@ async fn main() -> anyhow::Result<()> {
     nostr.add_relay("wss://relay.damus.io").await?;
     nostr.connect().await;
 
+    // domain
+    let domain = std::env::var("DOMAIN_URL")
+        .expect("DATABASE_URL must be set")
+        .to_string();
+
     let db = setup_db(pg_url);
     let secp = Secp256k1::new();
     let state = State {
@@ -90,6 +101,7 @@ async fn main() -> anyhow::Result<()> {
         mm,
         secp,
         nostr,
+        domain,
     };
 
     // spawn a task to check for previous pending invoices
@@ -120,6 +132,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/health-check", get(health_check))
         .route("/check-username/:username", get(check_username))
         .route("/register", post(register_route))
+        .route("/.well-known/nostr.json", get(well_known_nip5_route))
+        .route(
+            "/.well-known/lnurlp/:username",
+            get(well_known_lnurlp_route),
+        )
         .fallback(fallback)
         .layer(
             CorsLayer::new()

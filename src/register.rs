@@ -137,6 +137,7 @@ mod tests_integration {
             mm: mock_mm,
             secp: Secp256k1::new(),
             nostr,
+            domain: "http://127.0.0.1:8080".to_string(),
         };
 
         let name = "veryuniquename123".to_string();
@@ -182,6 +183,7 @@ mod tests_integration {
             mm: mock_mm,
             secp: Secp256k1::new(),
             nostr,
+            domain: "http://127.0.0.1:8080".to_string(),
         };
 
         let connect = InviteCode::new(
@@ -233,6 +235,7 @@ mod tests_integration {
             mm: mock_mm,
             secp: Secp256k1::new(),
             nostr,
+            domain: "http://127.0.0.1:8080".to_string(),
         };
 
         let connect = InviteCode::new(

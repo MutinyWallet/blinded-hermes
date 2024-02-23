@@ -519,6 +519,7 @@ dependencies = [
  "sha2",
  "tokio",
  "tower-http",
+ "url",
 ]
 
 [[package]]
