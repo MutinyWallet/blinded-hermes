@@ -55,10 +55,18 @@ impl Invoice {
             .optional()?)
     }
 
-    pub fn get_by_state(conn: &mut PgConnection, state: i32) -> anyhow::Result<Option<Invoice>> {
+    pub fn get_by_state(conn: &mut PgConnection, state: i32) -> anyhow::Result<Vec<Invoice>> {
         Ok(invoice::table
             .filter(invoice::state.eq(state))
-            .first::<Invoice>(conn)
-            .optional()?)
+            .load::<Invoice>(conn)?)
+    }
+
+    pub fn set_state(&self, conn: &mut PgConnection, s: i32) -> anyhow::Result<()> {
+        diesel::update(invoice::table)
+            .filter(invoice::id.eq(self.id))
+            .set(invoice::state.eq(s))
+            .execute(conn)?;
+
+        Ok(())
     }
 }

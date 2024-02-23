@@ -53,6 +53,8 @@
           if [ ! -f .env ]; then
             cp .env.sample .env
             sed -i 's|DATABASE_URL=postgres://localhost/hermes|DATABASE_URL=postgres://hermes_user:password@localhost:5432/hermes|g' .env
+	    # random nsec for CI only
+            sed -i 's|NSEC=|NSEC=nsec1lmtupx60q0pg6lk3kcl0c56mp7xukulmcc2rxu3gd6sage8xzxhs3slpac|g' .env
           fi
         '';
 

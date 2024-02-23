@@ -4,6 +4,7 @@ use axum::routing::get;
 use axum::{extract::DefaultBodyLimit, routing::post};
 use axum::{http, Extension, Router, TypedHeader};
 use log::{error, info};
+use nostr::{key::FromSkStr, Keys};
 use secp256k1::{All, Secp256k1};
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 use tokio::signal::unix::{signal, SignalKind};
@@ -12,11 +13,13 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use crate::{
     db::{setup_db, DBConnection},
+    invoice::handle_pending_invoices,
     mint::{setup_multimint, MultiMintWrapperTrait},
     routes::{check_username, health_check, register_route, valid_origin, validate_cors},
 };
 
 mod db;
+mod invoice;
 mod mint;
 mod models;
 mod register;
@@ -47,6 +50,7 @@ pub struct State {
     db: Arc<dyn DBConnection + Send + Sync>,
     mm: Arc<dyn MultiMintWrapperTrait + Send + Sync>,
     pub secp: Secp256k1<All>,
+    pub nostr: nostr_sdk::Client,
 }
 
 #[tokio::main]
@@ -63,15 +67,38 @@ async fn main() -> anyhow::Result<()> {
         .transpose()?
         .unwrap_or(8080);
 
+    // fedimint
     let fm_db_path = std::env::var("FM_DB_PATH").expect("FM_DB_PATH must be set");
     let fm_db_path = PathBuf::from_str(&fm_db_path).expect("Invalid fm db path");
     let mm = setup_multimint(fm_db_path)
         .await
         .expect("should set up mints");
 
+    // nostr
+    let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
+    let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
+    let nostr = nostr_sdk::Client::new(&nostr_sk);
+    nostr.add_relay("wss://nostr.mutinywallet.com").await?;
+    nostr.add_relay("wss://relay.mutinywallet.com").await?;
+    nostr.add_relay("wss://relay.damus.io").await?;
+    nostr.connect().await;
+
     let db = setup_db(pg_url);
     let secp = Secp256k1::new();
-    let state = State { db, mm, secp };
+    let state = State {
+        db,
+        mm,
+        secp,
+        nostr,
+    };
+
+    // spawn a task to check for previous pending invoices
+    let cloned_state = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = handle_pending_invoices(cloned_state).await {
+            error!("Error handling pending invoices: {e}")
+        }
+    });
 
     let addr: std::net::SocketAddr = format!("0.0.0.0:{port}")
         .parse()

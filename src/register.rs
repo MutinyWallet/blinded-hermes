@@ -107,6 +107,7 @@ mod tests_integration {
     use std::{str::FromStr, sync::Arc};
 
     use fedimint_core::{api::InviteCode, config::FederationId, PeerId};
+    use nostr::{key::FromSkStr, Keys};
     use secp256k1::Secp256k1;
 
     use crate::{
@@ -124,13 +125,18 @@ mod tests_integration {
         let pg_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
         let db = setup_db(pg_url);
 
-        // jwap out fm with a mock here since that's not what is being tested
+        // swap out fm with a mock here since that's not what is being tested
         let mock_mm = Arc::new(MockMultiMintWrapperTrait::new());
+
+        let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
+        let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
+        let nostr = nostr_sdk::Client::new(&nostr_sk);
 
         let state = State {
             db: db.clone(),
             mm: mock_mm,
             secp: Secp256k1::new(),
+            nostr,
         };
 
         let name = "veryuniquename123".to_string();
@@ -165,11 +171,17 @@ mod tests_integration {
             .times(1)
             .returning(|_| true);
 
+        // nostr
+        let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
+        let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
+        let nostr = nostr_sdk::Client::new(&nostr_sk);
+
         let mock_mm = Arc::new(mock_mm);
         let state = State {
             db: db.clone(),
             mm: mock_mm,
             secp: Secp256k1::new(),
+            nostr,
         };
 
         let connect = InviteCode::new(
@@ -210,11 +222,17 @@ mod tests_integration {
             .times(1)
             .returning(|_| Ok(()));
 
+        // nostr
+        let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
+        let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
+        let nostr = nostr_sdk::Client::new(&nostr_sk);
+
         let mock_mm = Arc::new(mock_mm);
         let state = State {
             db: db.clone(),
             mm: mock_mm,
             secp: Secp256k1::new(),
+            nostr,
         };
 
         let connect = InviteCode::new(
