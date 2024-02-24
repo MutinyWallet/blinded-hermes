@@ -36,6 +36,11 @@ pub async fn register(
         return Err((StatusCode::BAD_REQUEST, "Unavailable".to_string()));
     }
 
+    if !req.verify(state.auth_pk) {
+        return Err((StatusCode::UNAUTHORIZED, "Invalid blind sig".to_string()));
+    }
+    // todo save nonce to db and check for replay attacks
+
     match state.db.check_name_available(req.name.clone()) {
         Ok(true) => (),
         Ok(false) => {
@@ -46,8 +51,6 @@ pub async fn register(
             return Err((StatusCode::INTERNAL_SERVER_ERROR, "ServerError".to_string()));
         }
     };
-
-    // TODO verify blinded info
 
     // make sure the federation is either already added or connectable
     if !state.mm.check_has_federation(req.federation_id).await {

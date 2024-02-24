@@ -16,6 +16,7 @@ use log::{debug, error};
 use nostr::prelude::XOnlyPublicKey;
 use serde::{de, Deserialize, Deserializer, Serialize};
 use std::{collections::HashMap, fmt::Display, str::FromStr};
+use tbs::AggregatePublicKey;
 use url::Url;
 
 pub async fn check_username(
@@ -38,7 +39,14 @@ pub struct RegisterRequest {
     pub pubkey: String,
     pub federation_id: FederationId,
     pub federation_invite_code: String,
-    // TODO blinded message info
+    pub msg: tbs::Message,
+    pub sig: tbs::Signature,
+}
+
+impl RegisterRequest {
+    pub fn verify(&self, pubkey: AggregatePublicKey) -> bool {
+        tbs::verify(self.msg, self.sig, pubkey)
+    }
 }
 
 impl From<RegisterRequest> for NewAppUser {

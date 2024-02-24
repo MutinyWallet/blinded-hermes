@@ -7,6 +7,7 @@ use log::{error, info};
 use nostr_sdk::nostr::{key::FromSkStr, Keys};
 use secp256k1::{All, Secp256k1};
 use std::{path::PathBuf, str::FromStr, sync::Arc};
+use tbs::AggregatePublicKey;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::oneshot;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -57,6 +58,7 @@ pub struct State {
     pub secp: Secp256k1<All>,
     pub nostr: nostr_sdk::Client,
     pub domain: String,
+    pub auth_pk: AggregatePublicKey,
 }
 
 #[tokio::main]
@@ -80,6 +82,10 @@ async fn main() -> anyhow::Result<()> {
         .await
         .expect("should set up mints");
 
+    let auth_pk = std::env::var("AUTH_PK").expect("AUTH_PK must be set");
+    // no from_str impl so just decode from serde
+    let auth_pk: AggregatePublicKey = serde_json::from_str(&auth_pk).expect("Invalid AUTH_PK");
+
     // nostr
     let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
     let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
@@ -102,6 +108,7 @@ async fn main() -> anyhow::Result<()> {
         secp,
         nostr,
         domain,
+        auth_pk,
     };
 
     // spawn a task to check for previous pending invoices
