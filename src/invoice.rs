@@ -37,7 +37,7 @@ pub enum InvoiceState {
 }
 
 /// Starts subscription for all pending invoices from previous run
-pub(crate) async fn handle_pending_invoices(state: State) -> Result<()> {
+pub(crate) async fn handle_pending_invoices(state: &State) -> Result<()> {
     let invoices = state.db.get_pending_invoices()?;
 
     // Group invoices by federation_id

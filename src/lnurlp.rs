@@ -1,6 +1,15 @@
-use crate::State;
+use std::str::FromStr;
+
+use crate::{
+    invoice::{spawn_invoice_subscription, InvoiceState},
+    models::{invoice::NewInvoice, zaps::NewZap},
+    routes::{LnurlCallbackParams, LnurlCallbackResponse, LnurlVerifyResponse},
+    State,
+};
 use anyhow::anyhow;
-use fedimint_core::Amount;
+use fedimint_core::{config::FederationId, Amount};
+use fedimint_ln_client::LightningClientModule;
+use nostr::{Event, JsonUtil, Kind};
 
 use crate::routes::{LnurlStatus, LnurlType, LnurlWellKnownResponse};
 
@@ -26,6 +35,131 @@ pub async fn well_known_lnurlp(
     };
 
     Ok(res)
+}
+
+const MIN_AMOUNT: u64 = 1000;
+
+pub async fn lnurl_callback(
+    state: &State,
+    name: String,
+    params: LnurlCallbackParams,
+) -> anyhow::Result<LnurlCallbackResponse> {
+    let user = state.db.get_user_by_name(name.clone())?;
+    if user.is_none() {
+        return Err(anyhow!("NotFound"));
+    }
+    let user = user.expect("just checked");
+
+    if params.amount < MIN_AMOUNT {
+        return Err(anyhow::anyhow!("Amount < MIN_AMOUNT"));
+    }
+
+    // verify nostr param is a zap request
+    if params
+        .nostr
+        .as_ref()
+        .is_some_and(|n| Event::from_json(n).is_ok_and(|e| e.kind == Kind::ZapRequest))
+    {
+        return Err(anyhow::anyhow!("Invalid nostr event"));
+    }
+
+    let federation_id = FederationId::from_str(&user.federation_id)
+        .map_err(|e| anyhow::anyhow!("Invalid federation_id: {e}"))?;
+
+    let client = state
+        .mm
+        .get_federation_client(federation_id)
+        .await
+        .map_or(Err(anyhow!("NotFound")), Ok)?;
+
+    let ln = client.get_first_module::<LightningClientModule>();
+
+    let (op_id, pr) = ln
+        .create_bolt11_invoice(
+            Amount {
+                msats: params.amount,
+            },
+            "test invoice".to_string(), // todo set description hash properly
+            None,
+            (),
+        )
+        .await?;
+
+    // insert invoice into db for later verification
+    let new_invoice = NewInvoice {
+        federation_id: federation_id.to_string(),
+        op_id: op_id.to_string(),
+        app_user_id: user.id,
+        bolt11: pr.to_string(),
+        amount: params.amount as i64,
+        state: InvoiceState::Pending as i32,
+    };
+
+    let created_invoice = state.db.insert_new_invoice(new_invoice)?;
+
+    // save nostr zap request
+    if let Some(request) = params.nostr {
+        let new_zap = NewZap {
+            request,
+            event_id: None,
+        };
+        state.db.insert_new_zap(new_zap)?;
+    }
+
+    // create subscription to operation
+    let subscription = ln
+        .subscribe_ln_receive(op_id)
+        .await
+        .expect("subscribing to a just created operation can't fail");
+
+    spawn_invoice_subscription(
+        state.clone(),
+        created_invoice,
+        client,
+        user.clone(),
+        subscription,
+    )
+    .await;
+
+    let verify_url = format!("{}/lnurlp/{}/verify/{}", state.domain, user.name, op_id);
+
+    Ok(LnurlCallbackResponse {
+        pr: pr.to_string(),
+        success_action: None,
+        status: LnurlStatus::Ok,
+        reason: None,
+        verify: verify_url.parse()?,
+        routes: Some(vec![]),
+    })
+}
+
+pub async fn verify(
+    state: &State,
+    name: String,
+    op_id: String,
+) -> anyhow::Result<LnurlVerifyResponse> {
+    let invoice = state
+        .db
+        .get_invoice_by_op_id(op_id)?
+        .map_or(Err(anyhow::anyhow!("NotFound")), Ok)?;
+
+    let user = state
+        .db
+        .get_user_by_name(name)?
+        .map_or(Err(anyhow::anyhow!("NotFound")), Ok)?;
+
+    if invoice.app_user_id != user.id {
+        return Err(anyhow::anyhow!("NotFound"));
+    }
+
+    let verify_response = LnurlVerifyResponse {
+        status: LnurlStatus::Ok,
+        settled: invoice.state == InvoiceState::Settled as i32,
+        preimage: "".to_string(), // TODO: figure out how to get the preimage from fedimint client
+        pr: invoice.bolt11,
+    };
+
+    Ok(verify_response)
 }
 
 #[cfg(all(test, feature = "integration-tests"))]

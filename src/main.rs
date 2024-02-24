@@ -16,8 +16,8 @@ use crate::{
     invoice::handle_pending_invoices,
     mint::{setup_multimint, MultiMintWrapperTrait},
     routes::{
-        check_username, health_check, register_route, valid_origin, validate_cors,
-        well_known_lnurlp_route, well_known_nip5_route,
+        check_username, health_check, lnurl_callback_route, lnurl_verify_route, register_route,
+        valid_origin, validate_cors, well_known_lnurlp_route, well_known_nip5_route,
     },
 };
 
@@ -107,7 +107,7 @@ async fn main() -> anyhow::Result<()> {
     // spawn a task to check for previous pending invoices
     let cloned_state = state.clone();
     tokio::spawn(async move {
-        if let Err(e) = handle_pending_invoices(cloned_state).await {
+        if let Err(e) = handle_pending_invoices(&cloned_state).await {
             error!("Error handling pending invoices: {e}")
         }
     });
@@ -118,6 +118,7 @@ async fn main() -> anyhow::Result<()> {
 
     // if the server is self hosted, allow all origins
     // otherwise, only allow the origins in ALLOWED_ORIGINS
+    // TODO I think remove this so cors passes for most things
     let cors_function = {
         |origin: &HeaderValue, _request_parts: &Parts| {
             let Ok(origin) = origin.to_str() else {
@@ -137,6 +138,8 @@ async fn main() -> anyhow::Result<()> {
             "/.well-known/lnurlp/:username",
             get(well_known_lnurlp_route),
         )
+        .route("/lnurlp/:username/callback", get(lnurl_callback_route))
+        .route("/lnurlp/:username/verify/:op_id", get(lnurl_verify_route))
         .fallback(fallback)
         .layer(
             CorsLayer::new()

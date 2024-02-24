@@ -50,3 +50,19 @@ impl Zap {
         Ok(())
     }
 }
+
+#[derive(Insertable)]
+#[diesel(table_name = zaps)]
+pub struct NewZap {
+    pub request: String,
+    pub event_id: Option<String>,
+}
+
+impl NewZap {
+    pub fn insert(&self, conn: &mut PgConnection) -> anyhow::Result<Zap> {
+        diesel::insert_into(zaps::table)
+            .values(self)
+            .get_result::<Zap>(conn)
+            .map_err(|e| e.into())
+    }
+}
