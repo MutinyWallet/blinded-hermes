@@ -170,7 +170,7 @@ mod tests_integration {
 
     use crate::{
         db::setup_db, lnurlp::well_known_lnurlp, mint::MockMultiMintWrapperTrait,
-        models::app_user::NewAppUser, State,
+        models::app_user::NewAppUser, register::BlindSigner, State,
     };
 
     #[tokio::test]
@@ -187,12 +187,16 @@ mod tests_integration {
         let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
         let nostr = nostr_sdk::Client::new(&nostr_sk);
 
+        // create blind signer
+        let signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+
         let mock_mm = Arc::new(mock_mm);
         let state = State {
             db: db.clone(),
             mm: mock_mm,
             secp: Secp256k1::new(),
             nostr,
+            auth_pk: signer.pk,
             domain: "http://hello.com".to_string(),
         };
 

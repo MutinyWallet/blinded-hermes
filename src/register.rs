@@ -39,7 +39,6 @@ pub async fn register(
     if !req.verify(state.auth_pk) {
         return Err((StatusCode::UNAUTHORIZED, "Invalid blind sig".to_string()));
     }
-    // todo save nonce to db and check for replay attacks
 
     match state.db.check_name_available(req.name.clone()) {
         Ok(true) => (),
@@ -72,6 +71,7 @@ pub async fn register(
     }
 
     // TODO insert blinding info and new user as an atomic transaction
+    // TODO save nonce to db and check for replay attacks
 
     match state.db.insert_new_user(req.into()) {
         Ok(_) => Ok(RegisterResponse {}),
@@ -106,18 +106,57 @@ mod tests {
 }
 
 #[cfg(all(test, feature = "integration-tests"))]
+use tbs::{
+    combine_valid_shares, AggregatePublicKey, BlindedMessage, BlindedSignature, SecretKeyShare,
+};
+
+#[cfg(all(test, feature = "integration-tests"))]
+use sha2::Digest;
+
+#[cfg(all(test, feature = "integration-tests"))]
+#[derive(Debug, Copy, Clone)]
+pub struct BlindSigner {
+    sk: SecretKeyShare,
+    pub pk: AggregatePublicKey,
+}
+
+#[cfg(all(test, feature = "integration-tests"))]
+impl BlindSigner {
+    pub fn derive(seed: &[u8], service_id: i32, plan_id: i32) -> Self {
+        let hash = sha2::Sha512::digest(
+            [seed, &service_id.to_be_bytes(), &plan_id.to_be_bytes()].concat(),
+        );
+        let scalar =
+            tbs::Scalar::from_bytes_wide(hash.as_slice().try_into().expect("Sha512 is 64 bytes"));
+        Self::from_sk(SecretKeyShare(scalar))
+    }
+
+    pub fn from_sk(sk: SecretKeyShare) -> Self {
+        let pk = AggregatePublicKey(sk.to_pub_key_share().0);
+
+        Self { sk, pk }
+    }
+
+    pub fn blind_sign(&self, blinded_message: BlindedMessage) -> BlindedSignature {
+        let share = tbs::sign_blinded_msg(blinded_message, self.sk);
+        combine_valid_shares(vec![(0, share)], 1)
+    }
+}
+
+#[cfg(all(test, feature = "integration-tests"))]
 mod tests_integration {
     use std::{str::FromStr, sync::Arc};
 
     use fedimint_core::{api::InviteCode, config::FederationId, PeerId};
     use nostr::{key::FromSkStr, Keys};
     use secp256k1::Secp256k1;
+    use tbs::{blind_message, unblind_signature, BlindingKey};
 
     use crate::{
         db::setup_db,
         mint::MockMultiMintWrapperTrait,
         models::app_user::NewAppUser,
-        register::{check_available, register},
+        register::{check_available, register, BlindSigner},
         routes::RegisterRequest,
         State,
     };
@@ -135,11 +174,15 @@ mod tests_integration {
         let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
         let nostr = nostr_sdk::Client::new(&nostr_sk);
 
+        // create blind signer
+        let signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+
         let state = State {
             db: db.clone(),
             mm: mock_mm,
             secp: Secp256k1::new(),
             nostr,
+            auth_pk: signer.pk,
             domain: "http://127.0.0.1:8080".to_string(),
         };
 
@@ -180,14 +223,25 @@ mod tests_integration {
         let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
         let nostr = nostr_sdk::Client::new(&nostr_sk);
 
+        // create blind signer
+        let signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+
         let mock_mm = Arc::new(mock_mm);
         let state = State {
             db: db.clone(),
             mm: mock_mm,
             secp: Secp256k1::new(),
             nostr,
+            auth_pk: signer.pk,
             domain: "http://127.0.0.1:8080".to_string(),
         };
+
+        // generate valid blinded message
+        let msg = tbs::Message::from_bytes(b"Hello World!");
+        let blinding_key = BlindingKey::random();
+        let blinded_msg = blind_message(msg, blinding_key);
+        let blind_sig = signer.blind_sign(blinded_msg);
+        let sig = unblind_signature(blinding_key, blind_sig);
 
         let connect = InviteCode::new(
             "ws://test1".parse().unwrap(),
@@ -199,6 +253,8 @@ mod tests_integration {
             pubkey: "".to_string(),
             federation_id: connect.federation_id(),
             federation_invite_code: connect.to_string(),
+            msg,
+            sig,
         };
 
         match register(&state, req).await {
@@ -232,14 +288,26 @@ mod tests_integration {
         let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
         let nostr = nostr_sdk::Client::new(&nostr_sk);
 
+        // create blind signer
+        let signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+
         let mock_mm = Arc::new(mock_mm);
         let state = State {
             db: db.clone(),
             mm: mock_mm,
             secp: Secp256k1::new(),
             nostr,
+            auth_pk: signer.pk,
             domain: "http://127.0.0.1:8080".to_string(),
         };
+
+        // generate valid blinded message
+        let signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+        let msg = tbs::Message::from_bytes(b"Hello World!");
+        let blinding_key = BlindingKey::random();
+        let blinded_msg = blind_message(msg, blinding_key);
+        let blind_sig = signer.blind_sign(blinded_msg);
+        let sig = unblind_signature(blinding_key, blind_sig);
 
         let connect = InviteCode::new(
             "ws://test1".parse().unwrap(),
@@ -251,6 +319,8 @@ mod tests_integration {
             pubkey: "".to_string(),
             federation_id: connect.federation_id(),
             federation_invite_code: connect.to_string(),
+            msg,
+            sig,
         };
 
         match register(&state, req).await {
