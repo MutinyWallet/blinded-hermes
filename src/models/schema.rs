@@ -7,6 +7,8 @@ diesel::table! {
         pubkey -> Varchar,
         #[max_length = 255]
         name -> Varchar,
+        #[max_length = 255]
+        unblinded_msg -> Varchar,
         #[max_length = 64]
         federation_id -> Varchar,
         #[max_length = 255]

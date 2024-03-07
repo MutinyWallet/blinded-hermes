@@ -36,8 +36,19 @@ pub async fn register(
         return Err((StatusCode::BAD_REQUEST, "Unavailable".to_string()));
     }
 
+    // verify token and double check that it has not been spent before
     if !req.verify(state.auth_pk) {
         return Err((StatusCode::UNAUTHORIZED, "Invalid blind sig".to_string()));
+    }
+    match state.db.check_token_not_spent(req.msg.0.to_string()) {
+        Ok(true) => (),
+        Ok(false) => {
+            return Err((StatusCode::BAD_REQUEST, "Already Registered".to_string()));
+        }
+        Err(e) => {
+            error!("Error in register: {e:?}");
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, "ServerError".to_string()));
+        }
     }
 
     match state.db.check_name_available(req.name.clone()) {
@@ -69,9 +80,6 @@ pub async fn register(
             }
         }
     }
-
-    // TODO insert blinding info and new user as an atomic transaction
-    // TODO save nonce to db and check for replay attacks
 
     match state.db.insert_new_user(req.into()) {
         Ok(_) => Ok(RegisterResponse {}),
@@ -195,6 +203,7 @@ mod tests_integration {
             pubkey: "".to_string(),
             name: commonname.clone(),
             federation_id: "".to_string(),
+            unblinded_msg: "test_username_checker".to_string(),
             federation_invite_code: "".to_string(),
         };
 
@@ -237,7 +246,7 @@ mod tests_integration {
         };
 
         // generate valid blinded message
-        let msg = tbs::Message::from_bytes(b"Hello World!");
+        let msg = tbs::Message::from_bytes(b"register_username_tests");
         let blinding_key = BlindingKey::random();
         let blinded_msg = blind_message(msg, blinding_key);
         let blind_sig = signer.blind_sign(blinded_msg);
@@ -303,7 +312,7 @@ mod tests_integration {
 
         // generate valid blinded message
         let signer = BlindSigner::derive(&[0u8; 32], 0, 0);
-        let msg = tbs::Message::from_bytes(b"Hello World!");
+        let msg = tbs::Message::from_bytes(b"register_username_add_unknown_federation_tests");
         let blinding_key = BlindingKey::random();
         let blinded_msg = blind_message(msg, blinding_key);
         let blind_sig = signer.blind_sign(blinded_msg);
@@ -328,6 +337,81 @@ mod tests_integration {
             Err(_) => {
                 panic!("shouldn't error")
             }
+        }
+    }
+
+    #[tokio::test]
+    pub async fn register_username_already_spent_token_tests() {
+        dotenv::dotenv().ok();
+        let pg_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        let db = setup_db(pg_url);
+
+        // swap out fm with a mock here since that's not what is being tested
+        let mut mock_mm = MockMultiMintWrapperTrait::new();
+        mock_mm
+            .expect_check_has_federation()
+            .times(1)
+            .returning(|_| true);
+
+        // nostr
+        let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
+        let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
+        let nostr = nostr_sdk::Client::new(&nostr_sk);
+
+        // create blind signer
+        let signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+
+        let mock_mm = Arc::new(mock_mm);
+        let state = State {
+            db: db.clone(),
+            mm: mock_mm,
+            secp: Secp256k1::new(),
+            nostr,
+            auth_pk: signer.pk,
+            domain: "http://127.0.0.1:8080".to_string(),
+        };
+
+        // generate valid blinded message
+        let msg = tbs::Message::from_bytes(b"register_username_already_spent_token_tests");
+        let blinding_key = BlindingKey::random();
+        let blinded_msg = blind_message(msg, blinding_key);
+        let blind_sig = signer.blind_sign(blinded_msg);
+        let sig = unblind_signature(blinding_key, blind_sig);
+
+        let connect = InviteCode::new(
+            "ws://test1".parse().unwrap(),
+            PeerId::from_str("1").unwrap(),
+            FederationId::dummy(),
+        );
+        let req = RegisterRequest {
+            name: "registername1".to_string(),
+            pubkey: "".to_string(),
+            federation_id: connect.federation_id(),
+            federation_invite_code: connect.to_string(),
+            msg,
+            sig,
+        };
+
+        // let the first user register sucessfully
+        match register(&state, req).await {
+            Ok(_) => (),
+            Err(_) => {
+                panic!("shouldn't error")
+            }
+        }
+
+        // second username attempting to register with the same msg
+        let req2 = RegisterRequest {
+            name: "registername2".to_string(),
+            pubkey: "".to_string(),
+            federation_id: connect.federation_id(),
+            federation_invite_code: connect.to_string(),
+            msg,
+            sig,
+        };
+
+        if register(&state, req2).await.is_ok() {
+            panic!("should not succeed")
         }
     }
 }

@@ -13,6 +13,7 @@ use crate::models::{
 #[cfg_attr(test, automock)]
 pub(crate) trait DBConnection {
     fn check_name_available(&self, name: String) -> anyhow::Result<bool>;
+    fn check_token_not_spent(&self, msg: String) -> anyhow::Result<bool>;
     fn insert_new_user(&self, name: NewAppUser) -> anyhow::Result<AppUser>;
     fn get_pending_invoices(&self) -> anyhow::Result<Vec<Invoice>>;
     fn insert_new_invoice(&self, invoice: NewInvoice) -> anyhow::Result<Invoice>;
@@ -33,6 +34,11 @@ impl DBConnection for PostgresConnection {
     fn check_name_available(&self, name: String) -> anyhow::Result<bool> {
         let conn = &mut self.db.get()?;
         AppUser::check_available_name(conn, name)
+    }
+
+    fn check_token_not_spent(&self, msg: String) -> anyhow::Result<bool> {
+        let conn = &mut self.db.get()?;
+        AppUser::check_token_not_spent(conn, msg)
     }
 
     fn insert_new_user(&self, new_user: NewAppUser) -> anyhow::Result<AppUser> {

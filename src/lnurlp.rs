@@ -205,6 +205,7 @@ mod tests_integration {
             pubkey: "e6642fd69bd211f93f7f1f36ca51a26a5290eb2dd1b0d8279a87bb0d480c8443".to_string(),
             name: username.clone(),
             federation_id: "".to_string(),
+            unblinded_msg: "".to_string(),
             federation_invite_code: "".to_string(),
         };
 

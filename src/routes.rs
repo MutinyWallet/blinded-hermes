@@ -55,6 +55,7 @@ impl From<RegisterRequest> for NewAppUser {
             pubkey: request.pubkey,
             name: request.name,
             federation_id: request.federation_id.to_string(),
+            unblinded_msg: request.msg.0.to_string(),
             federation_invite_code: request.federation_invite_code,
         }
     }
