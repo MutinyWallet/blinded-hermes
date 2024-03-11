@@ -5,7 +5,7 @@ test-integration:
     cargo test --features integration-tests
 
 run:
-    cargo run
+    RUST_LOG=debug cargo run
 
 release:
     cargo run --release

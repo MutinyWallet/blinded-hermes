@@ -3,6 +3,7 @@ use axum::http::{request::Parts, HeaderValue, Method, StatusCode, Uri};
 use axum::routing::get;
 use axum::{extract::DefaultBodyLimit, routing::post};
 use axum::{http, Extension, Router, TypedHeader};
+use bls12_381::G2Affine;
 use log::{error, info};
 use nostr_sdk::nostr::{key::FromSkStr, Keys};
 use secp256k1::{All, Secp256k1};
@@ -58,7 +59,8 @@ pub struct State {
     pub secp: Secp256k1<All>,
     pub nostr: nostr_sdk::Client,
     pub domain: String,
-    pub auth_pk: AggregatePublicKey,
+    pub free_pk: AggregatePublicKey,
+    pub paid_pk: AggregatePublicKey,
 }
 
 #[tokio::main]
@@ -82,9 +84,24 @@ async fn main() -> anyhow::Result<()> {
         .await
         .expect("should set up mints");
 
-    let auth_pk = std::env::var("AUTH_PK").expect("AUTH_PK must be set");
-    // no from_str impl so just decode from serde
-    let auth_pk: AggregatePublicKey = serde_json::from_str(&auth_pk).expect("Invalid AUTH_PK");
+    let free_pk = std::env::var("FREE_PK").expect("FREE_PK must be set");
+    let paid_pk = std::env::var("PAID_PK").expect("PAID_PK must be set");
+    let free_pk: AggregatePublicKey = AggregatePublicKey(
+        G2Affine::from_compressed(
+            hex::decode(&free_pk).expect("Invalid key hex")[..]
+                .try_into()
+                .expect("Invalid key byte key"),
+        )
+        .expect("Invalid FREE_PK"),
+    );
+    let paid_pk: AggregatePublicKey = AggregatePublicKey(
+        G2Affine::from_compressed(
+            hex::decode(&paid_pk).expect("Invalid key hex")[..]
+                .try_into()
+                .expect("Invalid key byte key"),
+        )
+        .expect("Invalid PAID_PK"),
+    );
 
     // nostr
     let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
@@ -108,7 +125,8 @@ async fn main() -> anyhow::Result<()> {
         secp,
         nostr,
         domain,
-        auth_pk,
+        free_pk,
+        paid_pk,
     };
 
     // spawn a task to check for previous pending invoices
@@ -138,8 +156,8 @@ async fn main() -> anyhow::Result<()> {
 
     let server_router = Router::new()
         .route("/health-check", get(health_check))
-        .route("/check-username/:username", get(check_username))
-        .route("/register", post(register_route))
+        .route("/v1/check-username/:username", get(check_username))
+        .route("/v1/register", post(register_route))
         .route("/.well-known/nostr.json", get(well_known_nip5_route))
         .route(
             "/.well-known/lnurlp/:username",

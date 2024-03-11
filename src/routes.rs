@@ -1,6 +1,5 @@
 use crate::{
     lnurlp::{lnurl_callback, verify, well_known_lnurlp},
-    models::app_user::NewAppUser,
     nostr::well_known_nip5,
     register::{check_available, register},
     State, ALLOWED_LOCALHOST, ALLOWED_ORIGINS, ALLOWED_SUBDOMAIN, API_VERSION,
@@ -35,7 +34,7 @@ pub async fn check_username(
 
 #[derive(Deserialize)]
 pub struct RegisterRequest {
-    pub name: String,
+    pub name: Option<String>,
     pub pubkey: String,
     pub federation_id: FederationId,
     pub federation_invite_code: String,
@@ -49,20 +48,10 @@ impl RegisterRequest {
     }
 }
 
-impl From<RegisterRequest> for NewAppUser {
-    fn from(request: RegisterRequest) -> Self {
-        NewAppUser {
-            pubkey: request.pubkey,
-            name: request.name,
-            federation_id: request.federation_id.to_string(),
-            unblinded_msg: request.msg.0.to_string(),
-            federation_invite_code: request.federation_invite_code,
-        }
-    }
-}
-
 #[derive(Serialize)]
-pub struct RegisterResponse {}
+pub struct RegisterResponse {
+    pub name: String,
+}
 
 pub async fn register_route(
     origin: Option<TypedHeader<Origin>>,
@@ -89,10 +78,10 @@ pub struct UserWellKnownNip5Resp {
 
 pub async fn well_known_nip5_route(
     Extension(state): Extension<State>,
-    Json(req): Json<UserWellKnownNip5Req>,
+    Query(params): Query<UserWellKnownNip5Req>,
 ) -> Result<Json<UserWellKnownNip5Resp>, (StatusCode, String)> {
     debug!("well_known_nip5_route");
-    match well_known_nip5(&state, req.name) {
+    match well_known_nip5(&state, params.name) {
         Ok(res) => Ok(Json(UserWellKnownNip5Resp { names: res })),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
     }

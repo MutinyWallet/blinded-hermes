@@ -11,7 +11,7 @@ pub fn well_known_nip5(
 
     let mut names = HashMap::new();
     if let Some(user) = user {
-        names.insert(user.name, XOnlyPublicKey::from_str(&user.pubkey).unwrap());
+        names.insert(user.name, XOnlyPublicKey::from_str(&user.pubkey)?);
     }
 
     Ok(names)
@@ -43,7 +43,8 @@ mod tests_integration {
         let nostr = nostr_sdk::Client::new(&nostr_sk);
 
         // create blind signer
-        let signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+        let free_signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+        let paid_signer = BlindSigner::derive(&[0u8; 32], 0, 0);
 
         let mock_mm = Arc::new(mock_mm);
         let state = State {
@@ -51,7 +52,8 @@ mod tests_integration {
             mm: mock_mm,
             secp: Secp256k1::new(),
             nostr,
-            auth_pk: signer.pk,
+            free_pk: free_signer.pk,
+            paid_pk: paid_signer.pk,
             domain: "http://127.0.0.1:8080".to_string(),
         };
 

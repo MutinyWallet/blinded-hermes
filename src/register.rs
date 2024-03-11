@@ -1,12 +1,15 @@
 use std::str::FromStr;
 
 use crate::{
+    models::app_user::NewAppUser,
     routes::{RegisterRequest, RegisterResponse},
     State,
 };
 use fedimint_core::api::InviteCode;
 use lazy_regex::*;
 use log::error;
+use names::Generator;
+use nostr::prelude::XOnlyPublicKey;
 use reqwest::StatusCode;
 
 pub static ALPHANUMERIC_REGEX: Lazy<Regex> = lazy_regex!("^[a-zA-Z0-9]+$");
@@ -28,30 +31,70 @@ pub fn check_available(state: &State, name: String) -> anyhow::Result<bool> {
     state.db.check_name_available(name)
 }
 
+pub fn generate_random_name(state: &State) -> anyhow::Result<String> {
+    loop {
+        let new_name = Generator::with_naming(names::Name::Numbered)
+            .next()
+            .expect("should generate name")
+            .replace('-', "");
+
+        if check_available(state, new_name.clone())? {
+            return Ok(new_name);
+        }
+    }
+}
+
 pub async fn register(
     state: &State,
     req: RegisterRequest,
 ) -> Result<RegisterResponse, (StatusCode, String)> {
-    if !is_valid_name(&req.name) {
+    // validate user name & pubkey first
+    let requested_paid = req.name.is_some();
+    if requested_paid && !is_valid_name(&req.name.clone().unwrap()) {
         return Err((StatusCode::BAD_REQUEST, "Unavailable".to_string()));
     }
+    XOnlyPublicKey::from_str(&req.pubkey)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Nostr Pubkey Invalid".to_string()))?;
+
+    // a different signer based on paid vs free
+    let signer = if requested_paid {
+        state.paid_pk
+    } else {
+        state.free_pk
+    };
 
     // verify token and double check that it has not been spent before
-    if !req.verify(state.auth_pk) {
+    if !req.verify(signer) {
         return Err((StatusCode::UNAUTHORIZED, "Invalid blind sig".to_string()));
     }
-    match state.db.check_token_not_spent(req.msg.0.to_string()) {
-        Ok(true) => (),
-        Ok(false) => {
-            return Err((StatusCode::BAD_REQUEST, "Already Registered".to_string()));
+
+    let user_msg_hex = serde_json::to_string(&req.msg)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Nostr blinded message".to_string()))?;
+    match state.db.get_user_by_token(user_msg_hex.clone()) {
+        Ok(Some(u)) => {
+            // if token has already been spent, just return the registered user info
+            return Ok(RegisterResponse { name: u.name });
         }
+        Ok(None) => (),
         Err(e) => {
             error!("Error in register: {e:?}");
             return Err((StatusCode::INTERNAL_SERVER_ERROR, "ServerError".to_string()));
         }
     }
 
-    match state.db.check_name_available(req.name.clone()) {
+    let name_to_register = if requested_paid {
+        req.name.clone().unwrap().clone()
+    } else {
+        match generate_random_name(state) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("Error in register name generator: {e:?}");
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, "ServerError".to_string()));
+            }
+        }
+    };
+
+    match state.db.check_name_available(name_to_register.clone()) {
         Ok(true) => (),
         Ok(false) => {
             return Err((StatusCode::BAD_REQUEST, "Unavailable".to_string()));
@@ -81,8 +124,17 @@ pub async fn register(
         }
     }
 
-    match state.db.insert_new_user(req.into()) {
-        Ok(_) => Ok(RegisterResponse {}),
+    let new_user = NewAppUser {
+        pubkey: req.pubkey,
+        name: name_to_register.clone(),
+        federation_id: req.federation_id.to_string(),
+        unblinded_msg: user_msg_hex,
+        federation_invite_code: req.federation_invite_code,
+    };
+    match state.db.insert_new_user(new_user) {
+        Ok(_) => Ok(RegisterResponse {
+            name: name_to_register,
+        }),
         Err(e) => {
             error!("Errorgister: {e:?}");
             Err((StatusCode::INTERNAL_SERVER_ERROR, "ServerError".to_string()))
@@ -183,14 +235,16 @@ mod tests_integration {
         let nostr = nostr_sdk::Client::new(&nostr_sk);
 
         // create blind signer
-        let signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+        let free_signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+        let paid_signer = BlindSigner::derive(&[0u8; 32], 0, 0);
 
         let state = State {
             db: db.clone(),
             mm: mock_mm,
             secp: Secp256k1::new(),
             nostr,
-            auth_pk: signer.pk,
+            free_pk: free_signer.pk,
+            paid_pk: paid_signer.pk,
             domain: "http://127.0.0.1:8080".to_string(),
         };
 
@@ -233,7 +287,8 @@ mod tests_integration {
         let nostr = nostr_sdk::Client::new(&nostr_sk);
 
         // create blind signer
-        let signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+        let free_signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+        let paid_signer = BlindSigner::derive(&[0u8; 32], 0, 0);
 
         let mock_mm = Arc::new(mock_mm);
         let state = State {
@@ -241,7 +296,8 @@ mod tests_integration {
             mm: mock_mm,
             secp: Secp256k1::new(),
             nostr,
-            auth_pk: signer.pk,
+            free_pk: free_signer.pk,
+            paid_pk: paid_signer.pk,
             domain: "http://127.0.0.1:8080".to_string(),
         };
 
@@ -249,7 +305,7 @@ mod tests_integration {
         let msg = tbs::Message::from_bytes(b"register_username_tests");
         let blinding_key = BlindingKey::random();
         let blinded_msg = blind_message(msg, blinding_key);
-        let blind_sig = signer.blind_sign(blinded_msg);
+        let blind_sig = paid_signer.blind_sign(blinded_msg);
         let sig = unblind_signature(blinding_key, blind_sig);
 
         let connect = InviteCode::new(
@@ -258,8 +314,8 @@ mod tests_integration {
             FederationId::dummy(),
         );
         let req = RegisterRequest {
-            name: "registername".to_string(),
-            pubkey: "".to_string(),
+            name: Some("registername".to_string()),
+            pubkey: "552a9d06810f306bfc085cb1e1c26102554138a51fa3a7fdf98f5b03a945143a".to_string(),
             federation_id: connect.federation_id(),
             federation_invite_code: connect.to_string(),
             msg,
@@ -298,7 +354,8 @@ mod tests_integration {
         let nostr = nostr_sdk::Client::new(&nostr_sk);
 
         // create blind signer
-        let signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+        let free_signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+        let paid_signer = BlindSigner::derive(&[0u8; 32], 0, 0);
 
         let mock_mm = Arc::new(mock_mm);
         let state = State {
@@ -306,7 +363,8 @@ mod tests_integration {
             mm: mock_mm,
             secp: Secp256k1::new(),
             nostr,
-            auth_pk: signer.pk,
+            free_pk: free_signer.pk,
+            paid_pk: paid_signer.pk,
             domain: "http://127.0.0.1:8080".to_string(),
         };
 
@@ -324,8 +382,8 @@ mod tests_integration {
             FederationId::dummy(),
         );
         let req = RegisterRequest {
-            name: "newfederationusername".to_string(),
-            pubkey: "".to_string(),
+            name: Some("newfederationusername".to_string()),
+            pubkey: "552a9d06810f306bfc085cb1e1c26102554138a51fa3a7fdf98f5b03a945143a".to_string(),
             federation_id: connect.federation_id(),
             federation_invite_code: connect.to_string(),
             msg,
@@ -359,7 +417,8 @@ mod tests_integration {
         let nostr = nostr_sdk::Client::new(&nostr_sk);
 
         // create blind signer
-        let signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+        let free_signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+        let paid_signer = BlindSigner::derive(&[0u8; 32], 0, 0);
 
         let mock_mm = Arc::new(mock_mm);
         let state = State {
@@ -367,7 +426,8 @@ mod tests_integration {
             mm: mock_mm,
             secp: Secp256k1::new(),
             nostr,
-            auth_pk: signer.pk,
+            free_pk: free_signer.pk,
+            paid_pk: paid_signer.pk,
             domain: "http://127.0.0.1:8080".to_string(),
         };
 
@@ -375,7 +435,7 @@ mod tests_integration {
         let msg = tbs::Message::from_bytes(b"register_username_already_spent_token_tests");
         let blinding_key = BlindingKey::random();
         let blinded_msg = blind_message(msg, blinding_key);
-        let blind_sig = signer.blind_sign(blinded_msg);
+        let blind_sig = paid_signer.blind_sign(blinded_msg);
         let sig = unblind_signature(blinding_key, blind_sig);
 
         let connect = InviteCode::new(
@@ -384,8 +444,8 @@ mod tests_integration {
             FederationId::dummy(),
         );
         let req = RegisterRequest {
-            name: "registername1".to_string(),
-            pubkey: "".to_string(),
+            name: Some("registername1".to_string()),
+            pubkey: "552a9d06810f306bfc085cb1e1c26102554138a51fa3a7fdf98f5b03a945143a".to_string(),
             federation_id: connect.federation_id(),
             federation_invite_code: connect.to_string(),
             msg,
@@ -394,24 +454,32 @@ mod tests_integration {
 
         // let the first user register sucessfully
         match register(&state, req).await {
-            Ok(_) => (),
+            Ok(r) => {
+                assert_eq!(r.name, "registername1");
+            }
             Err(_) => {
                 panic!("shouldn't error")
             }
         }
 
         // second username attempting to register with the same msg
+        // should return the first username it registered with
         let req2 = RegisterRequest {
-            name: "registername2".to_string(),
-            pubkey: "".to_string(),
+            name: Some("registername2".to_string()),
+            pubkey: "552a9d06810f306bfc085cb1e1c26102554138a51fa3a7fdf98f5b03a945143a".to_string(),
             federation_id: connect.federation_id(),
             federation_invite_code: connect.to_string(),
             msg,
             sig,
         };
 
-        if register(&state, req2).await.is_ok() {
-            panic!("should not succeed")
+        match register(&state, req2).await {
+            Ok(r) => {
+                assert_eq!(r.name, "registername1");
+            }
+            Err(_) => {
+                panic!("shouldn't error")
+            }
         }
     }
 }

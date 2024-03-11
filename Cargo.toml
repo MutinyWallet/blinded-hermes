@@ -21,6 +21,7 @@ fedimint-core = "0.2.2"
 fedimint-client = "0.2.2"
 fedimint-wallet-client = "0.2.2"
 fedimint-mint-client = "0.2.2"
+bls12_381 = { version = "0.7.1", features = [ "zeroize", "groups" ] }
 fedimint-ln-client = "0.2.2"
 futures = "0.3.28"
 url = "2.5.0"
@@ -41,6 +42,7 @@ tokio = { version = "1.12.0", features = ["full"] }
 tower-http = { version = "0.4.0", features = ["cors"] }
 lazy-regex = "3.1.0"
 multimint = { git = "https://github.com/Kodylow/multimint", rev = "00df9d34f0244d0200eee4d285094b22b34cf38b" }
+names = "0.14.0"
 
 [dev-dependencies]
 mockall = "0.11.2"

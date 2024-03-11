@@ -43,12 +43,11 @@ impl AppUser {
             == 0)
     }
 
-    pub fn check_token_not_spent(conn: &mut PgConnection, msg: String) -> anyhow::Result<bool> {
+    pub fn get_by_token(conn: &mut PgConnection, msg: String) -> anyhow::Result<Option<AppUser>> {
         Ok(app_user::table
             .filter(app_user::unblinded_msg.eq(msg))
-            .count()
-            .get_result::<i64>(conn)?
-            == 0)
+            .first::<AppUser>(conn)
+            .optional()?)
     }
 
     pub fn get_by_pubkey(
