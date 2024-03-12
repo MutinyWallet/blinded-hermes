@@ -29,6 +29,9 @@
             pkgs.postgresql
             pkgs.gcc
             pkgs.gcc.cc.lib
+            pkgs.pkg-config
+            pkgs.libclang.lib
+            pkgs.clang
           ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
             pkgs.libiconv
           ];
@@ -50,7 +53,18 @@
           if [ ! -f .env ]; then
             cp .env.sample .env
             sed -i 's|DATABASE_URL=postgres://localhost/hermes|DATABASE_URL=postgres://hermes_user:password@localhost:5432/hermes|g' .env
+	    # random nsec for CI only
+            sed -i 's|NSEC=|NSEC=nsec1lmtupx60q0pg6lk3kcl0c56mp7xukulmcc2rxu3gd6sage8xzxhs3slpac|g' .env
+	    # localhost domain
+            sed -i 's|DOMAIN_URL=|DOMAIN_URL=http://127.0.0.1:8080|g' .env
           fi
+        '';
+
+	setupFedimintTestDirScript = pkgs.writeShellScript "setup-fedimint-test-dir" ''
+          if [ -d .fedimint-test-dir ]; then
+            rm -rf .fedimint-test-dir
+          fi
+          mkdir -m 700 .fedimint-test-dir
         '';
 
       in
@@ -69,14 +83,18 @@
             pkgs.rust-analyzer
             pkgs.diesel-cli
             pkgs.gcc.cc.lib
+            pkgs.pkg-config
+            pkgs.libclang.lib
+            pkgs.clang
           ];
           shellHook = ''
-	    export LIBCLANG_PATH=${pkgs.libclang.lib}/lib/
+            export LIBCLANG_PATH="${pkgs.libclang.lib}/lib"
             export LD_LIBRARY_PATH=${pkgs.openssl}/bin:${pkgs.gcc.cc.lib}/lib:$LD_LIBRARY_PATH
             export PKG_CONFIG_PATH=${pkgs.openssl.dev}/lib/pkgconfig
             
             ${setupPostgresScript}
             ${setupEnvScript}
+            ${setupFedimintTestDirScript}
           '';
         };
       });
