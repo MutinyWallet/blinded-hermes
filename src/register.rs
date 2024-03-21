@@ -12,7 +12,7 @@ use names::Generator;
 use nostr::prelude::XOnlyPublicKey;
 use reqwest::StatusCode;
 
-pub static ALPHANUMERIC_REGEX: Lazy<Regex> = lazy_regex!("^[a-zA-Z0-9]+$");
+pub static ALPHANUMERIC_REGEX: Lazy<Regex> = lazy_regex!("^[a-z0-9-_.]+$");
 
 pub fn is_valid_name(name: &str) -> bool {
     let name_len = name.len();
@@ -106,7 +106,15 @@ pub async fn register(
     };
 
     // make sure the federation is either already added or connectable
-    if !state.mm.check_has_federation(req.federation_id).await {
+    let invite_code = match InviteCode::from_str(&req.federation_invite_code) {
+        Ok(i) => i,
+        Err(e) => {
+            error!("Error in register: {e:?}");
+            return Err((StatusCode::BAD_REQUEST, "InvalidFederation".to_string()));
+        }
+    };
+    let federation_id = invite_code.federation_id();
+    if !state.mm.check_has_federation(federation_id).await {
         let invite_code = match InviteCode::from_str(&req.federation_invite_code) {
             Ok(i) => i,
             Err(e) => {
@@ -127,7 +135,7 @@ pub async fn register(
     let new_user = NewAppUser {
         pubkey: req.pubkey,
         name: name_to_register.clone(),
-        federation_id: req.federation_id.to_string(),
+        federation_id: federation_id.to_string(),
         unblinded_msg: user_msg_hex,
         federation_invite_code: req.federation_invite_code,
     };
@@ -155,10 +163,12 @@ mod tests {
         assert!(!is_valid_name("n"));
         assert!(!is_valid_name(""));
         assert!(!is_valid_name("bad&name"));
+        assert!(!is_valid_name("BADNAME"));
         assert!(!is_valid_name("bad space name"));
-        assert!(!is_valid_name("bad_name"));
 
         // good
+        assert!(is_valid_name("good_name"));
+        assert!(is_valid_name("good.name"));
         assert!(is_valid_name("goodname"));
         assert!(is_valid_name("goodname1"));
         assert!(is_valid_name("yesnameisverygoodandunderlimit"));
@@ -316,7 +326,6 @@ mod tests_integration {
         let req = RegisterRequest {
             name: Some("registername".to_string()),
             pubkey: "552a9d06810f306bfc085cb1e1c26102554138a51fa3a7fdf98f5b03a945143a".to_string(),
-            federation_id: connect.federation_id(),
             federation_invite_code: connect.to_string(),
             msg,
             sig,
@@ -384,7 +393,6 @@ mod tests_integration {
         let req = RegisterRequest {
             name: Some("newfederationusername".to_string()),
             pubkey: "552a9d06810f306bfc085cb1e1c26102554138a51fa3a7fdf98f5b03a945143a".to_string(),
-            federation_id: connect.federation_id(),
             federation_invite_code: connect.to_string(),
             msg,
             sig,
@@ -446,7 +454,6 @@ mod tests_integration {
         let req = RegisterRequest {
             name: Some("registername1".to_string()),
             pubkey: "552a9d06810f306bfc085cb1e1c26102554138a51fa3a7fdf98f5b03a945143a".to_string(),
-            federation_id: connect.federation_id(),
             federation_invite_code: connect.to_string(),
             msg,
             sig,
@@ -467,7 +474,6 @@ mod tests_integration {
         let req2 = RegisterRequest {
             name: Some("registername2".to_string()),
             pubkey: "552a9d06810f306bfc085cb1e1c26102554138a51fa3a7fdf98f5b03a945143a".to_string(),
-            federation_id: connect.federation_id(),
             federation_invite_code: connect.to_string(),
             msg,
             sig,
