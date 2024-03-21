@@ -9,7 +9,6 @@ use axum::headers::Origin;
 use axum::http::StatusCode;
 use axum::Extension;
 use axum::{Json, TypedHeader};
-use fedimint_core::config::FederationId;
 use fedimint_core::Amount;
 use log::{debug, error};
 use nostr::prelude::XOnlyPublicKey;
@@ -36,7 +35,6 @@ pub async fn check_username(
 pub struct RegisterRequest {
     pub name: Option<String>,
     pub pubkey: String,
-    pub federation_id: FederationId,
     pub federation_invite_code: String,
     pub msg: tbs::Message,
     pub sig: tbs::Signature,
