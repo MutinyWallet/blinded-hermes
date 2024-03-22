@@ -10,6 +10,7 @@ use anyhow::anyhow;
 use fedimint_core::{config::FederationId, Amount, BitcoinHash};
 use fedimint_ln_client::LightningClientModule;
 use fedimint_ln_common::bitcoin::hashes::sha256;
+use fedimint_ln_common::bitcoin::secp256k1::Parity;
 use fedimint_ln_common::lightning_invoice::{Bolt11InvoiceDescription, Sha256};
 use nostr::{Event, JsonUtil, Kind};
 
@@ -50,7 +51,7 @@ pub async fn lnurl_callback(
     name: String,
     params: LnurlCallbackParams,
 ) -> anyhow::Result<LnurlCallbackResponse> {
-    let user = state.db.get_user_by_name(name.clone())?;
+    let user = state.db.get_user_and_increment_counter(&name)?;
     if user.is_none() {
         return Err(anyhow!("NotFound"));
     }
@@ -92,13 +93,15 @@ pub async fn lnurl_callback(
         }
     };
 
+    let invoice_index = user.invoice_index;
+
     let (op_id, pr, preimage) = ln
-        .create_bolt11_invoice(
-            Amount {
-                msats: params.amount,
-            },
+        .create_bolt11_invoice_for_user_tweaked(
+            Amount::from_msats(params.amount),
             Bolt11InvoiceDescription::Hash(&desc_hash),
-            None,
+            Some(86_400), // 1 day expiry
+            user.pubkey().public_key(Parity::Odd), // todo is this parity correct / easy to work with?
+            invoice_index as u64,
             (),
             None, // todo set gateway properly
         )
@@ -110,6 +113,7 @@ pub async fn lnurl_callback(
         op_id: op_id.to_string(),
         preimage: hex::encode(preimage),
         app_user_id: user.id,
+        user_invoice_index: invoice_index,
         bolt11: pr.to_string(),
         amount: params.amount as i64,
         state: InvoiceState::Pending as i32,
@@ -135,7 +139,6 @@ pub async fn lnurl_callback(
     spawn_invoice_subscription(
         state.clone(),
         created_invoice,
-        client,
         user.clone(),
         subscription,
     )

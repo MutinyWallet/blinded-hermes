@@ -1,6 +1,8 @@
 use crate::models::schema::app_user;
 use diesel::prelude::*;
+use fedimint_ln_common::bitcoin::secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 #[derive(
     QueryableByName, Queryable, AsChangeset, Serialize, Deserialize, Debug, Clone, PartialEq,
@@ -14,9 +16,14 @@ pub struct AppUser {
     pub unblinded_msg: String,
     pub federation_id: String,
     pub federation_invite_code: String,
+    pub invoice_index: i32,
 }
 
 impl AppUser {
+    pub fn pubkey(&self) -> XOnlyPublicKey {
+        XOnlyPublicKey::from_str(&self.pubkey).expect("invalid pubkey")
+    }
+
     pub fn get_app_users(conn: &mut PgConnection) -> anyhow::Result<Vec<AppUser>> {
         Ok(app_user::table.load::<Self>(conn)?)
     }
@@ -33,6 +40,27 @@ impl AppUser {
             .filter(app_user::name.eq(name))
             .first::<AppUser>(conn)
             .optional()?)
+    }
+
+    pub fn get_by_name_and_increment_counter(
+        conn: &mut PgConnection,
+        name: &str,
+    ) -> anyhow::Result<Option<AppUser>> {
+        conn.transaction(|conn| {
+            let user = app_user::table
+                .filter(app_user::name.eq(name))
+                .first::<AppUser>(conn)
+                .optional()?;
+
+            // if the user exists, increment their invoice index
+            if let Some(user) = &user {
+                diesel::update(app_user::table.filter(app_user::id.eq(user.id)))
+                    .set(app_user::invoice_index.eq(app_user::invoice_index + 1))
+                    .execute(conn)?;
+            }
+
+            Ok(user)
+        })
     }
 
     pub fn check_available_name(conn: &mut PgConnection, name: String) -> anyhow::Result<bool> {

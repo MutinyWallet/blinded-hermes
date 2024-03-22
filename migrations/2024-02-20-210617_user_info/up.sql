@@ -4,7 +4,8 @@ CREATE TABLE app_user (
     name VARCHAR(255) NOT NULL UNIQUE,
     unblinded_msg VARCHAR(255) NOT NULL UNIQUE,
     federation_id VARCHAR(64) NOT NULL,
-    federation_invite_code VARCHAR(255) NOT NULL
+    federation_invite_code VARCHAR(255) NOT NULL,
+    invoice_index INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX idx_app_user_unblinded_msg ON app_user (unblinded_msg);
@@ -16,6 +17,7 @@ CREATE TABLE invoice (
     op_id VARCHAR(64) NOT NULL,
     preimage VARCHAR(64) NOT NULL,
     app_user_id INTEGER NOT NULL references app_user(id),
+    user_invoice_index INTEGER NOT NULL,
     bolt11 VARCHAR(2048) NOT NULL,
     amount BIGINT NOT NULL,
     state INTEGER NOT NULL DEFAULT 0

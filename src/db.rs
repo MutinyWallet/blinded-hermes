@@ -21,6 +21,7 @@ pub(crate) trait DBConnection {
     fn set_invoice_state(&self, invoice: Invoice, s: i32) -> anyhow::Result<()>;
     fn get_user_by_name(&self, name: String) -> anyhow::Result<Option<AppUser>>;
     fn get_user_by_id(&self, id: i32) -> anyhow::Result<Option<AppUser>>;
+    fn get_user_and_increment_counter(&self, name: &str) -> anyhow::Result<Option<AppUser>>;
     fn insert_new_zap(&self, new_zap: NewZap) -> anyhow::Result<Zap>;
     fn get_zap_by_id(&self, id: i32) -> anyhow::Result<Option<Zap>>;
     fn set_zap_event_id(&self, zap: Zap, event_id: String) -> anyhow::Result<()>;
@@ -64,6 +65,11 @@ impl DBConnection for PostgresConnection {
     fn get_user_by_id(&self, id: i32) -> anyhow::Result<Option<AppUser>> {
         let conn = &mut self.db.get()?;
         AppUser::get_by_id(conn, id)
+    }
+
+    fn get_user_and_increment_counter(&self, name: &str) -> anyhow::Result<Option<AppUser>> {
+        let conn = &mut self.db.get()?;
+        AppUser::get_by_name_and_increment_counter(conn, name)
     }
 
     fn insert_new_invoice(&self, new_invoice: NewInvoice) -> anyhow::Result<Invoice> {
