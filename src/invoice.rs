@@ -63,7 +63,7 @@ pub(crate) async fn handle_pending_invoices(state: &State) -> Result<()> {
                         let user = state
                             .db
                             .get_user_by_id(invoice.app_user_id)?
-                            .map_or(Err(anyhow!("no user")), Ok)?;
+                            .ok_or(anyhow!("no user"))?;
                         spawn_invoice_subscription(
                             state.clone(),
                             invoice,

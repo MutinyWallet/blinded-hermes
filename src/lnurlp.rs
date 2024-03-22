@@ -72,7 +72,7 @@ pub async fn lnurl_callback(
         .mm
         .get_federation_client(federation_id)
         .await
-        .map_or(Err(anyhow!("NotFound")), Ok)?;
+        .ok_or(anyhow!("NotFound"))?;
 
     let ln = client.get_first_module::<LightningClientModule>();
 
@@ -145,12 +145,12 @@ pub async fn verify(
     let invoice = state
         .db
         .get_invoice_by_op_id(op_id)?
-        .map_or(Err(anyhow::anyhow!("NotFound")), Ok)?;
+        .ok_or(anyhow::anyhow!("NotFound"))?;
 
     let user = state
         .db
         .get_user_by_name(name)?
-        .map_or(Err(anyhow::anyhow!("NotFound")), Ok)?;
+        .ok_or(anyhow::anyhow!("NotFound"))?;
 
     if invoice.app_user_id != user.id {
         return Err(anyhow::anyhow!("NotFound"));
