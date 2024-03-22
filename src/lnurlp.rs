@@ -31,7 +31,7 @@ pub async fn well_known_lnurlp(
     let res = LnurlWellKnownResponse {
         callback: format!("{}/lnurlp/{}/callback", state.domain, name).parse()?,
         max_sendable: Amount { msats: 100000 },
-        min_sendable: Amount { msats: 1000 },
+        min_sendable: Amount { msats: MIN_AMOUNT },
         metadata: calc_metadata(&name, &state.domain_no_http()),
         comment_allowed: None,
         tag: LnurlType::PayRequest,
@@ -57,7 +57,10 @@ pub async fn lnurl_callback(
     let user = user.expect("just checked");
 
     if params.amount < MIN_AMOUNT {
-        return Err(anyhow::anyhow!("Amount < MIN_AMOUNT"));
+        return Err(anyhow::anyhow!(
+            "Amount ({}) < MIN_AMOUNT ({MIN_AMOUNT})",
+            params.amount
+        ));
     }
 
     // verify nostr param is a zap request
