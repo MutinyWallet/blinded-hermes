@@ -14,6 +14,7 @@ CREATE TABLE invoice (
     id SERIAL PRIMARY KEY,
     federation_id VARCHAR(64) NOT NULL,
     op_id VARCHAR(64) NOT NULL,
+    preimage VARCHAR(64) NOT NULL,
     app_user_id INTEGER NOT NULL references app_user(id),
     bolt11 VARCHAR(2048) NOT NULL,
     amount BIGINT NOT NULL,

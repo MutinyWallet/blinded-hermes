@@ -92,7 +92,7 @@ pub async fn lnurl_callback(
         }
     };
 
-    let (op_id, pr, _preimage) = ln
+    let (op_id, pr, preimage) = ln
         .create_bolt11_invoice(
             Amount {
                 msats: params.amount,
@@ -108,6 +108,7 @@ pub async fn lnurl_callback(
     let new_invoice = NewInvoice {
         federation_id: federation_id.to_string(),
         op_id: op_id.to_string(),
+        preimage: hex::encode(preimage),
         app_user_id: user.id,
         bolt11: pr.to_string(),
         amount: params.amount as i64,
@@ -174,7 +175,7 @@ pub async fn verify(
     let verify_response = LnurlVerifyResponse {
         status: LnurlStatus::Ok,
         settled: invoice.state == InvoiceState::Settled as i32,
-        preimage: "".to_string(), // TODO: figure out how to get the preimage from fedimint client
+        preimage: invoice.preimage,
         pr: invoice.bolt11,
     };
 

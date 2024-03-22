@@ -23,6 +23,8 @@ diesel::table! {
         federation_id -> Varchar,
         #[max_length = 64]
         op_id -> Varchar,
+        #[max_length = 64]
+        preimage -> Varchar,
         app_user_id -> Int4,
         #[max_length = 2048]
         bolt11 -> Varchar,

@@ -11,6 +11,7 @@ pub struct Invoice {
     pub id: i32,
     pub federation_id: String,
     pub op_id: String,
+    pub preimage: String,
     pub app_user_id: i32,
     pub bolt11: String,
     pub amount: i64,
@@ -60,6 +61,7 @@ impl Invoice {
 pub struct NewInvoice {
     pub federation_id: String,
     pub op_id: String,
+    pub preimage: String,
     pub app_user_id: i32,
     pub bolt11: String,
     pub amount: i64,
