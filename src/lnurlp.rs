@@ -95,6 +95,12 @@ pub async fn lnurl_callback(
 
     let invoice_index = user.invoice_index;
 
+    let gateway = state
+        .mm
+        .get_gateway(&federation_id)
+        .await
+        .ok_or(anyhow!("Not gateway configured for federation"))?;
+
     let (op_id, pr, preimage) = ln
         .create_bolt11_invoice_for_user_tweaked(
             Amount::from_msats(params.amount),
@@ -103,7 +109,7 @@ pub async fn lnurl_callback(
             user.pubkey().public_key(Parity::Odd), // todo is this parity correct / easy to work with?
             invoice_index as u64,
             (),
-            None, // todo set gateway properly
+            Some(gateway),
         )
         .await?;
 
@@ -136,13 +142,7 @@ pub async fn lnurl_callback(
         .await
         .expect("subscribing to a just created operation can't fail");
 
-    spawn_invoice_subscription(
-        state.clone(),
-        created_invoice,
-        user.clone(),
-        subscription,
-    )
-    .await;
+    spawn_invoice_subscription(state.clone(), created_invoice, user.clone(), subscription).await;
 
     let verify_url = format!("{}/lnurlp/{}/verify/{}", state.domain, user.name, op_id);
 
