@@ -62,6 +62,15 @@ pub struct State {
     pub paid_pk: AggregatePublicKey,
 }
 
+impl State {
+    pub fn domain_no_http(&self) -> String {
+        self.domain
+            .replace("http://", "")
+            .replace("https://", "")
+            .replace('/', "")
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Load .env file

@@ -15,6 +15,10 @@ use nostr::{Event, JsonUtil, Kind};
 
 use crate::routes::{LnurlStatus, LnurlType, LnurlWellKnownResponse};
 
+fn calc_metadata(name: &str, domain: &str) -> String {
+    format!("[[\"text/identifier\",\"{name}@{domain}\"],[\"text/plain\",\"Sats for {name}\"]]")
+}
+
 pub async fn well_known_lnurlp(
     state: &State,
     name: String,
@@ -28,7 +32,7 @@ pub async fn well_known_lnurlp(
         callback: format!("{}/lnurlp/{}/callback", state.domain, name).parse()?,
         max_sendable: Amount { msats: 100000 },
         min_sendable: Amount { msats: 1000 },
-        metadata: "test metadata".to_string(), // TODO what should this be?
+        metadata: calc_metadata(&name, &state.domain_no_http()),
         comment_allowed: None,
         tag: LnurlType::PayRequest,
         status: LnurlStatus::Ok,
@@ -76,7 +80,15 @@ pub async fn lnurl_callback(
 
     let ln = client.get_first_module::<LightningClientModule>();
 
-    let desc_hash = Sha256(sha256::Hash::all_zeros()); // todo set description hash properly
+    // calculate description hash for invoice
+    let desc_hash = match params.nostr {
+        Some(ref nostr) => Sha256(sha256::Hash::hash(nostr.as_bytes())),
+        None => {
+            let metadata = calc_metadata(&name, &state.domain_no_http());
+            Sha256(sha256::Hash::hash(metadata.as_bytes()))
+        }
+    };
+
     let (op_id, pr, _preimage) = ln
         .create_bolt11_invoice(
             Amount {
