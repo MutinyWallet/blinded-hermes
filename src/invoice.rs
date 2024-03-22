@@ -1,20 +1,21 @@
 use std::{collections::HashMap, str::FromStr, time::Duration};
 
 use anyhow::{anyhow, Result};
-use fedimint_client::{oplog::UpdateStreamOrOutcome, ClientArc};
+use fedimint_client::{oplog::UpdateStreamOrOutcome, ClientHandleArc};
 use fedimint_core::{config::FederationId, core::OperationId, task::spawn, Amount};
 use fedimint_ln_client::{LightningClientModule, LnReceiveState};
+use fedimint_ln_common::bitcoin::hashes::Hash;
 use fedimint_mint_client::{MintClientModule, OOBNotes};
 use futures::StreamExt;
 use itertools::Itertools;
-use lightning_invoice::{Currency, InvoiceBuilder, PaymentSecret};
+use fedimint_ln_common::lightning_invoice::{Currency, InvoiceBuilder, PaymentSecret};
+use fedimint_ln_common::bitcoin::hashes::sha256::Hash as Sha256;
+use fedimint_ln_common::bitcoin::secp256k1::{Secp256k1, SecretKey};
 use log::{error, info};
-use nostr::hashes::Hash;
-use nostr::key::{Secp256k1, SecretKey};
 use nostr::prelude::rand::rngs::OsRng;
 use nostr::prelude::rand::RngCore;
 use nostr::secp256k1::XOnlyPublicKey;
-use nostr::{bitcoin::hashes::sha256::Hash as Sha256, Keys};
+use nostr::Keys;
 use nostr::{Event, EventBuilder, JsonUtil};
 use nostr_sdk::Client;
 use serde::{Deserialize, Serialize};
@@ -83,7 +84,7 @@ pub(crate) async fn handle_pending_invoices(state: &State) -> Result<()> {
 pub(crate) async fn spawn_invoice_subscription(
     state: State,
     i: Invoice,
-    client: ClientArc,
+    client: ClientHandleArc,
     userrelays: AppUser,
     subscription: UpdateStreamOrOutcome<LnReceiveState>,
 ) {
@@ -140,7 +141,7 @@ pub(crate) async fn spawn_invoice_subscription(
 }
 
 async fn notify_user(
-    client: ClientArc,
+    client: ClientHandleArc,
     nostr: &Client,
     state: &State,
     id: i32,
@@ -149,7 +150,12 @@ async fn notify_user(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mint = client.get_first_module::<MintClientModule>();
     let (operation_id, notes) = mint
-        .spend_notes(Amount::from_msats(amount), Duration::from_secs(604800), ())
+        .spend_notes(
+            Amount::from_msats(amount),
+            Duration::from_secs(604800),
+            true,
+            (),
+        )
         .await?;
 
     send_nostr_dm(nostr, &app_user_relays, operation_id, amount, notes).await?;

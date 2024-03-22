@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use fedimint_client::ClientArc;
+use fedimint_client::ClientHandleArc;
 use fedimint_core::{api::InviteCode, config::FederationId};
 use std::{path::PathBuf, sync::Arc};
 use tokio::sync::RwLock;
@@ -12,7 +12,7 @@ use multimint::MultiMint;
 #[async_trait]
 pub(crate) trait MultiMintWrapperTrait {
     async fn check_has_federation(&self, id: FederationId) -> bool;
-    async fn get_federation_client(&self, id: FederationId) -> Option<ClientArc>;
+    async fn get_federation_client(&self, id: FederationId) -> Option<ClientHandleArc>;
     async fn register_new_federation(&self, invite_code: InviteCode) -> anyhow::Result<()>;
 }
 
@@ -27,7 +27,7 @@ impl MultiMintWrapperTrait for MultiMintWrapper {
         self.fm.read().await.clients.lock().await.contains_key(&id)
     }
 
-    async fn get_federation_client(&self, id: FederationId) -> Option<ClientArc> {
+    async fn get_federation_client(&self, id: FederationId) -> Option<ClientHandleArc> {
         self.fm.read().await.clients.lock().await.get(&id).cloned()
     }
 
@@ -35,7 +35,7 @@ impl MultiMintWrapperTrait for MultiMintWrapper {
         self.fm
             .write()
             .await
-            .register_new(invite_code, false)
+            .register_new(invite_code, None)
             .await?;
         Ok(())
     }

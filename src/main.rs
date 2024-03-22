@@ -3,12 +3,11 @@ use axum::http::{request::Parts, HeaderValue, Method, StatusCode, Uri};
 use axum::routing::get;
 use axum::{extract::DefaultBodyLimit, routing::post};
 use axum::{http, Extension, Router, TypedHeader};
-use bls12_381::G2Affine;
 use log::{error, info};
 use nostr_sdk::nostr::{key::FromSkStr, Keys};
 use secp256k1::{All, Secp256k1};
 use std::{path::PathBuf, str::FromStr, sync::Arc};
-use tbs::AggregatePublicKey;
+use tbs::{AggregatePublicKey, PubKeyPoint};
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::oneshot;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -87,7 +86,7 @@ async fn main() -> anyhow::Result<()> {
     let free_pk = std::env::var("FREE_PK").expect("FREE_PK must be set");
     let paid_pk = std::env::var("PAID_PK").expect("PAID_PK must be set");
     let free_pk: AggregatePublicKey = AggregatePublicKey(
-        G2Affine::from_compressed(
+        PubKeyPoint::from_compressed(
             hex::decode(&free_pk).expect("Invalid key hex")[..]
                 .try_into()
                 .expect("Invalid key byte key"),
@@ -95,7 +94,7 @@ async fn main() -> anyhow::Result<()> {
         .expect("Invalid FREE_PK"),
     );
     let paid_pk: AggregatePublicKey = AggregatePublicKey(
-        G2Affine::from_compressed(
+        PubKeyPoint::from_compressed(
             hex::decode(&paid_pk).expect("Invalid key hex")[..]
                 .try_into()
                 .expect("Invalid key byte key"),

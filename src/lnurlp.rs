@@ -7,8 +7,10 @@ use crate::{
     State,
 };
 use anyhow::anyhow;
-use fedimint_core::{config::FederationId, Amount};
+use fedimint_core::{config::FederationId, Amount, BitcoinHash};
 use fedimint_ln_client::LightningClientModule;
+use fedimint_ln_common::bitcoin::hashes::sha256;
+use fedimint_ln_common::lightning_invoice::{Bolt11InvoiceDescription, Sha256};
 use nostr::{Event, JsonUtil, Kind};
 
 use crate::routes::{LnurlStatus, LnurlType, LnurlWellKnownResponse};
@@ -74,14 +76,16 @@ pub async fn lnurl_callback(
 
     let ln = client.get_first_module::<LightningClientModule>();
 
-    let (op_id, pr) = ln
+    let desc_hash = Sha256(sha256::Hash::all_zeros()); // todo set description hash properly
+    let (op_id, pr, _preimage) = ln
         .create_bolt11_invoice(
             Amount {
                 msats: params.amount,
             },
-            "test invoice".to_string(), // todo set description hash properly
+            Bolt11InvoiceDescription::Hash(&desc_hash),
             None,
             (),
+            None, // todo set gateway properly
         )
         .await?;
 
