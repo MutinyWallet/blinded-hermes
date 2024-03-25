@@ -134,6 +134,8 @@ async fn notify_user(
     invoice: &Invoice,
     user: AppUser,
 ) -> Result<()> {
+    let zap = state.db.get_zap_by_id(invoice.id)?;
+
     let dm = nostr
         .send_direct_msg(
             XOnlyPublicKey::from_str(&user.pubkey)?,
@@ -141,6 +143,7 @@ async fn notify_user(
                 "federation_id": invoice.federation_id,
                 "tweak_index": invoice.user_invoice_index,
                 "amount": invoice.amount,
+                "zap_request": zap.as_ref().map(|z| z.request.clone()),
             })
             .to_string(),
             None,
@@ -148,8 +151,8 @@ async fn notify_user(
         .await?;
 
     // Send zap if needed
-    if let Some(zap) = state.db.get_zap_by_id(invoice.id)? {
-        let request = Event::from_json(zap.request.clone())?;
+    if let Some(zap) = zap {
+        let request = Event::from_json(&zap.request)?;
         let event = create_zap_event(request, invoice.amount as u64, nostr.keys().await)?;
 
         let event_id = nostr.send_event(event).await?;
