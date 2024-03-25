@@ -8,8 +8,11 @@ use crate::{
 use fedimint_core::api::InviteCode;
 use lazy_regex::*;
 use log::error;
-use names::Generator;
-use nostr::prelude::XOnlyPublicKey;
+use nostr::bitcoin::hashes::sha256::Hash as Sha256;
+use nostr::hashes::Hash;
+use nostr::prelude::rand::prelude::{SliceRandom, StdRng};
+use nostr::prelude::rand::SeedableRng;
+use nostr::prelude::{ThirtyTwoByteHash, XOnlyPublicKey};
 use reqwest::StatusCode;
 
 pub static ALPHANUMERIC_REGEX: Lazy<Regex> = lazy_regex!("^[a-z0-9-_.]+$");
@@ -31,16 +34,32 @@ pub fn check_available(state: &State, name: String) -> anyhow::Result<bool> {
     state.db.check_name_available(name)
 }
 
-pub fn generate_random_name(state: &State) -> anyhow::Result<String> {
+pub(crate) fn gen_name(seed: [u8; 32]) -> String {
+    // Convert the seed into a u64
+    let seed_u64 = u64::from_le_bytes([
+        seed[0], seed[1], seed[2], seed[3], seed[4], seed[5], seed[6], seed[7],
+    ]);
+
+    // Create a new StdRng with the seed
+    let mut rng = StdRng::seed_from_u64(seed_u64);
+    let adj = names::ADJECTIVES.choose(&mut rng).unwrap();
+    let noun = names::NOUNS.choose(&mut rng).unwrap();
+
+    format!("{adj}{noun}").to_lowercase()
+}
+
+pub fn generate_random_name(state: &State, npub: XOnlyPublicKey) -> anyhow::Result<String> {
+    // start with hashing the npub, to make ensure the entire thing is used for the seed
+    let mut seed = Sha256::hash(&npub.serialize()).into_32();
     loop {
-        let new_name = Generator::with_naming(names::Name::Numbered)
-            .next()
-            .expect("should generate name")
-            .replace('-', "");
+        let new_name = gen_name(seed);
 
         if check_available(state, new_name.clone())? {
             return Ok(new_name);
         }
+
+        // if name is not available, hash and try again
+        seed = Sha256::hash(&seed).into_32();
     }
 }
 
@@ -53,7 +72,7 @@ pub async fn register(
     if requested_paid && !is_valid_name(&req.name.clone().unwrap()) {
         return Err((StatusCode::BAD_REQUEST, "Unavailable".to_string()));
     }
-    XOnlyPublicKey::from_str(&req.pubkey)
+    let pk = XOnlyPublicKey::from_str(&req.pubkey)
         .map_err(|_| (StatusCode::BAD_REQUEST, "Nostr Pubkey Invalid".to_string()))?;
 
     // a different signer based on paid vs free
@@ -85,7 +104,7 @@ pub async fn register(
     let name_to_register = if requested_paid {
         req.name.clone().unwrap().clone()
     } else {
-        match generate_random_name(state) {
+        match generate_random_name(state, pk) {
             Ok(s) => s,
             Err(e) => {
                 error!("Error in register name generator: {e:?}");
@@ -172,6 +191,17 @@ mod tests {
         assert!(is_valid_name("goodname"));
         assert!(is_valid_name("goodname1"));
         assert!(is_valid_name("yesnameisverygoodandunderlimit"));
+    }
+
+    #[test]
+    fn test_gen_name() {
+        let seed = [0u8; 32];
+        let name = super::gen_name(seed);
+        assert_eq!(name, "mountainoussign");
+        let seed = [1u8; 32];
+        let name2 = super::gen_name(seed);
+        assert_eq!(name2, "stimulatingbed");
+        assert_ne!(name2, name);
     }
 }
 
