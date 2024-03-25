@@ -106,7 +106,7 @@ pub async fn lnurl_callback(
             Amount::from_msats(params.amount),
             Bolt11InvoiceDescription::Hash(&desc_hash),
             Some(86_400), // 1 day expiry
-            user.pubkey().public_key(Parity::Odd), // todo is this parity correct / easy to work with?
+            user.pubkey().public_key(Parity::Even), // todo is this parity correct / easy to work with?
             invoice_index as u64,
             (),
             Some(gateway),
