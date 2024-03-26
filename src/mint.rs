@@ -51,6 +51,12 @@ impl MultiMintWrapperTrait for MultiMintWrapper {
             .await
             .expect("just registered");
 
+        // update gateway cache, so we can find the best gateways
+        let ln = client.get_first_module::<LightningClientModule>();
+        if let Err(e) = ln.update_gateway_cache(true).await {
+            error!("Failed to update gateway cache: {e}");
+        }
+
         if let Some(gateway) = select_gateway(&client).await {
             self.gateways.write().await.insert(id, gateway);
         } else {
@@ -76,6 +82,12 @@ pub(crate) async fn setup_multimint(
 
     // select gateway for each federation
     for (id, client) in clients.iter() {
+        // update gateway cache, so we can find the best gateways
+        let ln = client.get_first_module::<LightningClientModule>();
+        if let Err(e) = ln.update_gateway_cache(true).await {
+            error!("Failed to update gateway cache: {e}");
+        }
+
         match select_gateway(client).await {
             Some(gateway) => {
                 gateways.insert(*id, gateway);
