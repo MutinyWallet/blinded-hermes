@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use crate::{
     invoice::{spawn_invoice_subscription, InvoiceState},
+    mint::select_gateway,
     models::{invoice::NewInvoice, zaps::NewZap},
     routes::{LnurlCallbackParams, LnurlCallbackResponse, LnurlVerifyResponse},
     State,
@@ -103,11 +104,9 @@ pub async fn lnurl_callback(
 
     let invoice_index = user.invoice_index;
 
-    let gateway = state
-        .mm
-        .get_gateway(&federation_id)
+    let gateway = select_gateway(&client)
         .await
-        .ok_or(anyhow!("Not gateway configured for federation"))?;
+        .ok_or(anyhow!("No gateway found for federation"))?;
 
     let (op_id, pr, preimage) = ln
         .create_bolt11_invoice_for_user_tweaked(
