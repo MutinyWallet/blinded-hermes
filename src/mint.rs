@@ -97,26 +97,24 @@ pub(crate) async fn setup_multimint(
 
 pub(crate) async fn select_gateway(client: &ClientHandleArc) -> Option<LightningGateway> {
     let ln = client.get_first_module::<LightningClientModule>();
-    let mut gateway_id = None;
+    let mut selected_gateway = None;
     for gateway in ln.list_gateways().await {
         // first try to find a vetted gateway
         if gateway.vetted {
-            gateway_id = Some(gateway.info.gateway_id);
-            break; // if vetted gateway found, use it
+            // if we can select the gateway, return it
+            if let Some(gateway) = ln.select_gateway(&gateway.info.gateway_id).await {
+                return Some(gateway);
+            }
         }
 
         // if no vetted gateway found, try to find a gateway with reasonable fees
         let fees = gateway.info.fees;
         if fees.base_msat >= 1_000 && fees.proportional_millionths >= 100 {
-            gateway_id = Some(gateway.info.gateway_id);
+            if let Some(g) = ln.select_gateway(&gateway.info.gateway_id).await {
+                selected_gateway = Some(g);
+            }
         }
     }
 
-    if let Some(gateway_id) = gateway_id {
-        if let Some(gateway) = ln.select_gateway(&gateway_id).await {
-            return Some(gateway);
-        }
-    }
-
-    None
+    selected_gateway
 }
