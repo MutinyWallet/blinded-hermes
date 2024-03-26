@@ -5,6 +5,7 @@ use fedimint_ln_client::LightningClientModule;
 use fedimint_ln_common::LightningGateway;
 use log::error;
 use std::collections::HashMap;
+use std::time::Duration;
 use std::{path::PathBuf, sync::Arc};
 use tokio::sync::RwLock;
 
@@ -18,7 +19,6 @@ pub(crate) trait MultiMintWrapperTrait {
     async fn check_has_federation(&self, id: FederationId) -> bool;
     async fn get_federation_client(&self, id: FederationId) -> Option<ClientHandleArc>;
     async fn register_new_federation(&self, invite_code: InviteCode) -> anyhow::Result<()>;
-    async fn get_gateway(&self, id: FederationId) -> Option<LightningGateway>;
 }
 
 #[derive(Clone)]
@@ -57,11 +57,6 @@ impl MultiMintWrapperTrait for MultiMintWrapper {
 
         Ok(())
     }
-
-    async fn get_gateway(&self, id: FederationId) -> Option<LightningGateway> {
-        let client = self.get_federation_client(id).await?;
-        select_gateway(&client).await
-    }
 }
 
 pub(crate) async fn setup_multimint(
@@ -95,7 +90,25 @@ pub(crate) async fn setup_multimint(
         fm: Arc::new(RwLock::new(mm)),
     };
 
-    Ok(Arc::new(mmw))
+    let mmw = Arc::new(mmw);
+
+    // spawn thread to update gateways periodically, check every hour
+    let mmw_clone = mmw.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(60 * 60)).await;
+            let mm = mmw_clone.fm.read().await;
+            let clients = mm.clients.lock().await;
+            for (_, client) in clients.iter() {
+                let ln = client.get_first_module::<LightningClientModule>();
+                if let Err(e) = ln.update_gateway_cache(true).await {
+                    error!("Failed to update gateway cache: {e}");
+                }
+            }
+        }
+    });
+
+    Ok(mmw)
 }
 
 pub(crate) async fn select_gateway(client: &ClientHandleArc) -> Option<LightningGateway> {
