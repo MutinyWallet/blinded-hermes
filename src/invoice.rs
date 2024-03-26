@@ -143,6 +143,8 @@ async fn notify_user(
                 "federation_id": invoice.federation_id,
                 "tweak_index": invoice.user_invoice_index,
                 "amount": invoice.amount,
+                "bolt11": invoice.bolt11,
+                "preimage": invoice.preimage,
                 "zap_request": zap.as_ref().map(|z| z.request.clone()),
             })
             .to_string(),
