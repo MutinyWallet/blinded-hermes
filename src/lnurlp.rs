@@ -45,7 +45,7 @@ pub async fn well_known_lnurlp(
 }
 
 const MAX_AMOUNT: u64 = 100_000_000 * 1_000; // 1 BTC
-const MIN_AMOUNT: u64 = 1_000; // 1 sat
+const MIN_AMOUNT: u64 = 5_000; // 5 sats
 
 pub async fn lnurl_callback(
     state: &State,
