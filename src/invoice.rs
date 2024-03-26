@@ -1,20 +1,20 @@
-use std::{collections::HashMap, str::FromStr, time::Duration};
+use std::{collections::HashMap, str::FromStr};
 
 use anyhow::{anyhow, Result};
-use fedimint_client::{oplog::UpdateStreamOrOutcome, ClientArc};
-use fedimint_core::{config::FederationId, core::OperationId, task::spawn, Amount};
+use fedimint_client::oplog::UpdateStreamOrOutcome;
+use fedimint_core::{config::FederationId, task::spawn};
 use fedimint_ln_client::{LightningClientModule, LnReceiveState};
-use fedimint_mint_client::{MintClientModule, OOBNotes};
+use fedimint_ln_common::bitcoin::hashes::sha256::Hash as Sha256;
+use fedimint_ln_common::bitcoin::hashes::Hash;
+use fedimint_ln_common::bitcoin::secp256k1::{Secp256k1, SecretKey};
+use fedimint_ln_common::lightning_invoice::{Currency, InvoiceBuilder, PaymentSecret};
 use futures::StreamExt;
 use itertools::Itertools;
-use lightning_invoice::{Currency, InvoiceBuilder, PaymentSecret};
 use log::{error, info};
-use nostr::hashes::Hash;
-use nostr::key::{Secp256k1, SecretKey};
 use nostr::prelude::rand::rngs::OsRng;
 use nostr::prelude::rand::RngCore;
 use nostr::secp256k1::XOnlyPublicKey;
-use nostr::{bitcoin::hashes::sha256::Hash as Sha256, Keys};
+use nostr::Keys;
 use nostr::{Event, EventBuilder, JsonUtil};
 use nostr_sdk::Client;
 use serde::{Deserialize, Serialize};
@@ -62,11 +62,10 @@ pub(crate) async fn handle_pending_invoices(state: &State) -> Result<()> {
                         let user = state
                             .db
                             .get_user_by_id(invoice.app_user_id)?
-                            .map_or(Err(anyhow!("no user")), Ok)?;
+                            .ok_or(anyhow!("no user"))?;
                         spawn_invoice_subscription(
                             state.clone(),
                             invoice,
-                            client.clone(),
                             user.clone(),
                             subscription,
                         )
@@ -83,8 +82,7 @@ pub(crate) async fn handle_pending_invoices(state: &State) -> Result<()> {
 pub(crate) async fn spawn_invoice_subscription(
     state: State,
     i: Invoice,
-    client: ClientArc,
-    userrelays: AppUser,
+    user: AppUser,
     subscription: UpdateStreamOrOutcome<LnReceiveState>,
 ) {
     spawn("waiting for invoice being paid", async move {
@@ -108,16 +106,7 @@ pub(crate) async fn spawn_invoice_subscription(
                 }
                 LnReceiveState::Claimed => {
                     info!("Payment claimed");
-                    match notify_user(
-                        client,
-                        &nostr,
-                        &state,
-                        i.id,
-                        i.amount as u64,
-                        userrelays.clone(),
-                    )
-                    .await
-                    {
+                    match notify_user(&nostr, &state, &i, user).await {
                         Ok(_) => {
                             match state.db.set_invoice_state(i, InvoiceState::Settled as i32) {
                                 Ok(_) => (),
@@ -140,53 +129,37 @@ pub(crate) async fn spawn_invoice_subscription(
 }
 
 async fn notify_user(
-    client: ClientArc,
     nostr: &Client,
     state: &State,
-    id: i32,
-    amount: u64,
-    app_user_relays: AppUser,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mint = client.get_first_module::<MintClientModule>();
-    let (operation_id, notes) = mint
-        .spend_notes(Amount::from_msats(amount), Duration::from_secs(604800), ())
+    invoice: &Invoice,
+    user: AppUser,
+) -> Result<()> {
+    let zap = state.db.get_zap_by_id(invoice.id)?;
+
+    let dm = nostr
+        .send_direct_msg(
+            XOnlyPublicKey::from_str(&user.pubkey)?,
+            json!({
+                "federation_id": invoice.federation_id,
+                "tweak_index": invoice.user_invoice_index,
+                "amount": invoice.amount,
+                "zap_request": zap.as_ref().map(|z| z.request.clone()),
+            })
+            .to_string(),
+            None,
+        )
         .await?;
 
-    send_nostr_dm(nostr, &app_user_relays, operation_id, amount, notes).await?;
-
     // Send zap if needed
-    if let Some(zap) = state.db.get_zap_by_id(id)? {
-        let request = Event::from_json(zap.request.clone())?;
-        let event = create_zap_event(request, amount, nostr.keys().await)?;
+    if let Some(zap) = zap {
+        let request = Event::from_json(&zap.request)?;
+        let event = create_zap_event(request, invoice.amount as u64, nostr.keys().await)?;
 
         let event_id = nostr.send_event(event).await?;
         info!("Broadcasted zap {event_id}!");
 
         state.db.set_zap_event_id(zap, event_id.to_string())?;
     }
-
-    Ok(())
-}
-
-async fn send_nostr_dm(
-    nostr: &Client,
-    app_user_relays: &AppUser,
-    operation_id: OperationId,
-    amount: u64,
-    notes: OOBNotes,
-) -> Result<()> {
-    let dm = nostr
-        .send_direct_msg(
-            XOnlyPublicKey::from_str(&app_user_relays.pubkey).unwrap(),
-            json!({
-                "operationId": operation_id,
-                "amount": amount,
-                "notes": notes.to_string(),
-            })
-            .to_string(),
-            None,
-        )
-        .await?;
 
     info!("Sent nostr dm: {dm}");
     Ok(())

@@ -176,9 +176,7 @@ mod tests {
 }
 
 #[cfg(all(test, feature = "integration-tests"))]
-use tbs::{
-    combine_valid_shares, AggregatePublicKey, BlindedMessage, BlindedSignature, SecretKeyShare,
-};
+use tbs::{AggregatePublicKey, BlindedMessage, BlindedSignature, SecretKeyShare};
 
 #[cfg(all(test, feature = "integration-tests"))]
 use sha2::Digest;
@@ -209,7 +207,7 @@ impl BlindSigner {
 
     pub fn blind_sign(&self, blinded_message: BlindedMessage) -> BlindedSignature {
         let share = tbs::sign_blinded_msg(blinded_message, self.sk);
-        combine_valid_shares(vec![(0, share)], 1)
+        BlindedSignature(share.0)
     }
 }
 

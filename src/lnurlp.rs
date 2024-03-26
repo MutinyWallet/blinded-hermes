@@ -7,11 +7,18 @@ use crate::{
     State,
 };
 use anyhow::anyhow;
-use fedimint_core::{config::FederationId, Amount};
+use fedimint_core::{config::FederationId, Amount, BitcoinHash};
 use fedimint_ln_client::LightningClientModule;
+use fedimint_ln_common::bitcoin::hashes::sha256;
+use fedimint_ln_common::bitcoin::secp256k1::Parity;
+use fedimint_ln_common::lightning_invoice::{Bolt11InvoiceDescription, Sha256};
 use nostr::{Event, JsonUtil, Kind};
 
 use crate::routes::{LnurlStatus, LnurlType, LnurlWellKnownResponse};
+
+fn calc_metadata(name: &str, domain: &str) -> String {
+    format!("[[\"text/identifier\",\"{name}@{domain}\"],[\"text/plain\",\"Sats for {name}\"]]")
+}
 
 pub async fn well_known_lnurlp(
     state: &State,
@@ -25,8 +32,8 @@ pub async fn well_known_lnurlp(
     let res = LnurlWellKnownResponse {
         callback: format!("{}/lnurlp/{}/callback", state.domain, name).parse()?,
         max_sendable: Amount { msats: 100000 },
-        min_sendable: Amount { msats: 1000 },
-        metadata: "test metadata".to_string(), // TODO what should this be?
+        min_sendable: Amount { msats: MIN_AMOUNT },
+        metadata: calc_metadata(&name, &state.domain_no_http()),
         comment_allowed: None,
         tag: LnurlType::PayRequest,
         status: LnurlStatus::Ok,
@@ -44,14 +51,17 @@ pub async fn lnurl_callback(
     name: String,
     params: LnurlCallbackParams,
 ) -> anyhow::Result<LnurlCallbackResponse> {
-    let user = state.db.get_user_by_name(name.clone())?;
+    let user = state.db.get_user_and_increment_counter(&name)?;
     if user.is_none() {
         return Err(anyhow!("NotFound"));
     }
     let user = user.expect("just checked");
 
     if params.amount < MIN_AMOUNT {
-        return Err(anyhow::anyhow!("Amount < MIN_AMOUNT"));
+        return Err(anyhow::anyhow!(
+            "Amount ({}) < MIN_AMOUNT ({MIN_AMOUNT})",
+            params.amount
+        ));
     }
 
     // verify nostr param is a zap request
@@ -70,18 +80,36 @@ pub async fn lnurl_callback(
         .mm
         .get_federation_client(federation_id)
         .await
-        .map_or(Err(anyhow!("NotFound")), Ok)?;
+        .ok_or(anyhow!("NotFound"))?;
 
     let ln = client.get_first_module::<LightningClientModule>();
 
-    let (op_id, pr) = ln
-        .create_bolt11_invoice(
-            Amount {
-                msats: params.amount,
-            },
-            "test invoice".to_string(), // todo set description hash properly
-            None,
+    // calculate description hash for invoice
+    let desc_hash = match params.nostr {
+        Some(ref nostr) => Sha256(sha256::Hash::hash(nostr.as_bytes())),
+        None => {
+            let metadata = calc_metadata(&name, &state.domain_no_http());
+            Sha256(sha256::Hash::hash(metadata.as_bytes()))
+        }
+    };
+
+    let invoice_index = user.invoice_index;
+
+    let gateway = state
+        .mm
+        .get_gateway(&federation_id)
+        .await
+        .ok_or(anyhow!("Not gateway configured for federation"))?;
+
+    let (op_id, pr, preimage) = ln
+        .create_bolt11_invoice_for_user_tweaked(
+            Amount::from_msats(params.amount),
+            Bolt11InvoiceDescription::Hash(&desc_hash),
+            Some(86_400), // 1 day expiry
+            user.pubkey().public_key(Parity::Even), // todo is this parity correct / easy to work with?
+            invoice_index as u64,
             (),
+            Some(gateway),
         )
         .await?;
 
@@ -89,7 +117,9 @@ pub async fn lnurl_callback(
     let new_invoice = NewInvoice {
         federation_id: federation_id.to_string(),
         op_id: op_id.to_string(),
+        preimage: hex::encode(preimage),
         app_user_id: user.id,
+        user_invoice_index: invoice_index,
         bolt11: pr.to_string(),
         amount: params.amount as i64,
         state: InvoiceState::Pending as i32,
@@ -112,14 +142,7 @@ pub async fn lnurl_callback(
         .await
         .expect("subscribing to a just created operation can't fail");
 
-    spawn_invoice_subscription(
-        state.clone(),
-        created_invoice,
-        client,
-        user.clone(),
-        subscription,
-    )
-    .await;
+    spawn_invoice_subscription(state.clone(), created_invoice, user.clone(), subscription).await;
 
     let verify_url = format!("{}/lnurlp/{}/verify/{}", state.domain, user.name, op_id);
 
@@ -141,12 +164,12 @@ pub async fn verify(
     let invoice = state
         .db
         .get_invoice_by_op_id(op_id)?
-        .map_or(Err(anyhow::anyhow!("NotFound")), Ok)?;
+        .ok_or(anyhow::anyhow!("NotFound"))?;
 
     let user = state
         .db
         .get_user_by_name(name)?
-        .map_or(Err(anyhow::anyhow!("NotFound")), Ok)?;
+        .ok_or(anyhow::anyhow!("NotFound"))?;
 
     if invoice.app_user_id != user.id {
         return Err(anyhow::anyhow!("NotFound"));
@@ -155,7 +178,7 @@ pub async fn verify(
     let verify_response = LnurlVerifyResponse {
         status: LnurlStatus::Ok,
         settled: invoice.state == InvoiceState::Settled as i32,
-        preimage: "".to_string(), // TODO: figure out how to get the preimage from fedimint client
+        preimage: invoice.preimage,
         pr: invoice.bolt11,
     };
 

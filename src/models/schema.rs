@@ -13,6 +13,7 @@ diesel::table! {
         federation_id -> Varchar,
         #[max_length = 255]
         federation_invite_code -> Varchar,
+        invoice_index -> Int4,
     }
 }
 
@@ -23,7 +24,10 @@ diesel::table! {
         federation_id -> Varchar,
         #[max_length = 64]
         op_id -> Varchar,
+        #[max_length = 64]
+        preimage -> Varchar,
         app_user_id -> Int4,
+        user_invoice_index -> Int4,
         #[max_length = 2048]
         bolt11 -> Varchar,
         amount -> Int8,
