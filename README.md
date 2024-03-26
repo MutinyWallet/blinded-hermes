@@ -44,4 +44,10 @@ Any time you change a migration, you should run this locally, this will set up t
 diesel migration run
 ```
 
-Migrations are embedded into the code, so when they deploy somewhere after they have been init'd properly (`diesel setup`), there's no additional things to do on a server unless you need to revert things. Then you the deisel CLI tool for that. You do have to at least create the database first, though `diesel setup` will also do that for you.
+Migrations are NOT embedded into the code. You must shut down the server, run the below command locally, and then spin the server back up with the new version.
+
+```
+diesel migration run --database-url {PROD_DB_CONNECTION}
+```
+
+Replace PROD_DB_CONNECTION with the database config for production.

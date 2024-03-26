@@ -1,0 +1,39 @@
+# fly.toml app configuration file generated for hermes-blinded-staging on 2024-03-26T00:55:46-05:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'hermes-blinded-staging'
+primary_region = 'dfw'
+
+[build]
+
+[env]
+  DOMAIN_URL = 'https://mutiny.plus'
+  FM_DB_PATH = '/data'
+  HERMES_PORT = '8080'
+  RUST_LOG = 'debug'
+
+[mounts]
+  source="hermes_data"
+  destination="/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+  processes = ['app']
+
+[[http_service.checks]]
+    interval = '5s'
+    timeout = '5s'
+    grace_period = '10s'
+    method = 'GET'
+    path = '/health-check'
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1

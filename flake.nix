@@ -32,6 +32,7 @@
             pkgs.pkg-config
             pkgs.libclang.lib
             pkgs.clang
+            pkgs.flyctl
           ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
             pkgs.libiconv
           ];
@@ -86,6 +87,7 @@
             pkgs.pkg-config
             pkgs.libclang.lib
             pkgs.clang
+            pkgs.flyctl
           ];
           shellHook = ''
             export LIBCLANG_PATH="${pkgs.libclang.lib}/lib"
