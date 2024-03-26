@@ -18,14 +18,12 @@ pub(crate) trait MultiMintWrapperTrait {
     async fn check_has_federation(&self, id: FederationId) -> bool;
     async fn get_federation_client(&self, id: FederationId) -> Option<ClientHandleArc>;
     async fn register_new_federation(&self, invite_code: InviteCode) -> anyhow::Result<()>;
-    async fn get_gateway(&self, id: &FederationId) -> Option<LightningGateway>;
+    async fn get_gateway(&self, id: FederationId) -> Option<LightningGateway>;
 }
 
 #[derive(Clone)]
 struct MultiMintWrapper {
     fm: Arc<RwLock<MultiMint>>,
-    /// Our preferred lightning gateway for each federation
-    gateways: Arc<RwLock<HashMap<FederationId, LightningGateway>>>,
 }
 
 #[async_trait]
@@ -57,18 +55,12 @@ impl MultiMintWrapperTrait for MultiMintWrapper {
             error!("Failed to update gateway cache: {e}");
         }
 
-        if let Some(gateway) = select_gateway(&client).await {
-            self.gateways.write().await.insert(id, gateway);
-        } else {
-            error!("No suitable gateway found for federation {id}");
-        }
-
         Ok(())
     }
 
-    async fn get_gateway(&self, id: &FederationId) -> Option<LightningGateway> {
-        let lock = self.gateways.read().await;
-        lock.get(id).cloned()
+    async fn get_gateway(&self, id: FederationId) -> Option<LightningGateway> {
+        let client = self.get_federation_client(id).await?;
+        select_gateway(&client).await
     }
 }
 
@@ -101,7 +93,6 @@ pub(crate) async fn setup_multimint(
 
     let mmw = MultiMintWrapper {
         fm: Arc::new(RwLock::new(mm)),
-        gateways: Arc::new(RwLock::new(HashMap::new())),
     };
 
     Ok(Arc::new(mmw))

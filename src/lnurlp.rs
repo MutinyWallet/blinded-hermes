@@ -105,7 +105,7 @@ pub async fn lnurl_callback(
 
     let gateway = state
         .mm
-        .get_gateway(&federation_id)
+        .get_gateway(federation_id)
         .await
         .ok_or(anyhow!("Not gateway configured for federation"))?;
 
