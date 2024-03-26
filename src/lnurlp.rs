@@ -31,7 +31,7 @@ pub async fn well_known_lnurlp(
 
     let res = LnurlWellKnownResponse {
         callback: format!("{}/lnurlp/{}/callback", state.domain, name).parse()?,
-        max_sendable: Amount { msats: 100000 },
+        max_sendable: Amount { msats: MAX_AMOUNT },
         min_sendable: Amount { msats: MIN_AMOUNT },
         metadata: calc_metadata(&name, &state.domain_no_http()),
         comment_allowed: None,
@@ -44,7 +44,8 @@ pub async fn well_known_lnurlp(
     Ok(res)
 }
 
-const MIN_AMOUNT: u64 = 1000;
+const MAX_AMOUNT: u64 = 100_000_000 * 1_000; // 1 BTC
+const MIN_AMOUNT: u64 = 1_000; // 1 sat
 
 pub async fn lnurl_callback(
     state: &State,
@@ -60,6 +61,13 @@ pub async fn lnurl_callback(
     if params.amount < MIN_AMOUNT {
         return Err(anyhow::anyhow!(
             "Amount ({}) < MIN_AMOUNT ({MIN_AMOUNT})",
+            params.amount
+        ));
+    }
+
+    if params.amount > MAX_AMOUNT {
+        return Err(anyhow::anyhow!(
+            "Amount ({}) < MAX_AMOUNT ({MAX_AMOUNT})",
             params.amount
         ));
     }
