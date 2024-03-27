@@ -18,7 +18,7 @@ use crate::{
     mint::{setup_multimint, MultiMintWrapperTrait},
     routes::{
         check_username, health_check, lnurl_callback_route, lnurl_verify_route, register_route,
-        valid_origin, validate_cors, well_known_lnurlp_route, well_known_nip5_route,
+        root, valid_origin, validate_cors, well_known_lnurlp_route, well_known_nip5_route,
     },
 };
 
@@ -112,7 +112,7 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // nostr
-    let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
+    let nostr_nsec_str = std::env::var("NSEC").expect("NSEC must be set");
     let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
     let nostr = nostr_sdk::Client::new(&nostr_sk);
     nostr.add_relay("wss://nostr.mutinywallet.com").await?;
@@ -122,7 +122,7 @@ async fn main() -> anyhow::Result<()> {
 
     // domain
     let domain = std::env::var("DOMAIN_URL")
-        .expect("DATABASE_URL must be set")
+        .expect("DOMAIN_URL must be set")
         .to_string();
 
     let db = setup_db(pg_url);
@@ -163,6 +163,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let server_router = Router::new()
+        .route("/", get(root))
         .route("/health-check", get(health_check))
         .route("/v1/check-username/:username", get(check_username))
         .route("/v1/register", post(register_route))
