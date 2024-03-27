@@ -14,6 +14,7 @@ use log::{debug, error};
 use nostr::prelude::XOnlyPublicKey;
 use serde::{de, Deserialize, Deserializer, Serialize};
 use std::{collections::HashMap, fmt::Display, str::FromStr};
+use axum::response::Redirect;
 use tbs::AggregatePublicKey;
 use url::Url;
 
@@ -212,6 +213,10 @@ impl HealthResponse {
 /// https://datatracker.ietf.org/doc/html/draft-inadarei-api-health-check
 pub async fn health_check() -> Result<Json<HealthResponse>, (StatusCode, String)> {
     Ok(Json(HealthResponse::new_ok()))
+}
+
+pub async fn root() -> Redirect {
+    Redirect::to("https://plus.mutinywallet.com")
 }
 
 pub fn valid_origin(origin: &str) -> bool {
