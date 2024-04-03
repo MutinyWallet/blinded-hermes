@@ -1,12 +1,13 @@
 use crate::{
     lnurlp::{lnurl_callback, verify, well_known_lnurlp},
     nostr::well_known_nip5,
-    register::{check_available, register},
+    register::{check_available, check_registered_pubkey, register},
     State, ALLOWED_LOCALHOST, ALLOWED_ORIGINS, ALLOWED_SUBDOMAIN, API_VERSION,
 };
 use axum::extract::{Path, Query};
 use axum::headers::Origin;
 use axum::http::StatusCode;
+use axum::response::Redirect;
 use axum::Extension;
 use axum::{Json, TypedHeader};
 use fedimint_core::Amount;
@@ -14,7 +15,6 @@ use log::{debug, error};
 use nostr::prelude::XOnlyPublicKey;
 use serde::{de, Deserialize, Deserializer, Serialize};
 use std::{collections::HashMap, fmt::Display, str::FromStr};
-use axum::response::Redirect;
 use tbs::AggregatePublicKey;
 use url::Url;
 
@@ -29,6 +29,24 @@ pub async fn check_username(
     match check_available(&state, username) {
         Ok(res) => Ok(Json(res)),
         Err(e) => Err(handle_anyhow_error("check_username", e)),
+    }
+}
+
+pub async fn check_pubkey(
+    origin: Option<TypedHeader<Origin>>,
+    Extension(state): Extension<State>,
+    Path(pubkey): Path<String>,
+) -> Result<Json<Option<String>>, (StatusCode, String)> {
+    debug!("check_pubkey: {}", pubkey);
+    validate_cors(origin)?;
+
+    // check it's a valid pubkey
+    XOnlyPublicKey::from_str(&pubkey)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Nostr Pubkey Invalid".to_string()))?;
+
+    match check_registered_pubkey(&state, pubkey) {
+        Ok(res) => Ok(Json(res)),
+        Err(e) => Err(handle_anyhow_error("check_pubkey", e)),
     }
 }
 
