@@ -51,3 +51,11 @@ diesel migration run --database-url {PROD_DB_CONNECTION}
 ```
 
 Replace PROD_DB_CONNECTION with the database config for production.
+
+## Deployment
+
+For signet:
+
+```
+flyctl deploy
+```
