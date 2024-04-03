@@ -73,11 +73,12 @@ pub async fn lnurl_callback(
         ));
     }
 
-    // verify nostr param is a zap request
-    if params
-        .nostr
-        .as_ref()
-        .is_some_and(|n| Event::from_json(n).is_ok_and(|e| e.kind == Kind::ZapRequest))
+    // verify nostr param is a zap request if we have one
+    if params.nostr.is_some()
+        && !params
+            .nostr
+            .as_ref()
+            .is_some_and(|n| Event::from_json(n).is_ok_and(|e| e.kind == Kind::ZapRequest))
     {
         return Err(anyhow::anyhow!("Invalid nostr event"));
     }
