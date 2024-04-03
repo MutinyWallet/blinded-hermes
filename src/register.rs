@@ -31,6 +31,10 @@ pub fn check_available(state: &State, name: String) -> anyhow::Result<bool> {
     state.db.check_name_available(name)
 }
 
+pub fn check_registered_pubkey(state: &State, pubkey: String) -> anyhow::Result<Option<String>> {
+    state.db.check_registered_pubkey(pubkey)
+}
+
 pub fn generate_random_name(state: &State) -> anyhow::Result<String> {
     loop {
         let new_name = Generator::with_naming(names::Name::Numbered)
