@@ -1,5 +1,5 @@
 use axum::headers::Origin;
-use axum::http::{request::Parts, HeaderValue, Method, StatusCode, Uri};
+use axum::http::{Method, StatusCode, Uri};
 use axum::routing::get;
 use axum::{extract::DefaultBodyLimit, routing::post};
 use axum::{http, Extension, Router, TypedHeader};
@@ -18,7 +18,7 @@ use crate::{
     mint::{setup_multimint, MultiMintWrapperTrait},
     routes::{
         check_pubkey, check_username, health_check, lnurl_callback_route, lnurl_verify_route,
-        register_route, root, valid_origin, validate_cors, well_known_lnurlp_route,
+        register_route, root, validate_cors, well_known_lnurlp_route,
         well_known_nip5_route,
     },
 };
@@ -150,19 +150,6 @@ async fn main() -> anyhow::Result<()> {
         .parse()
         .expect("Failed to parse bind/port for webserver");
 
-    // if the server is self hosted, allow all origins
-    // otherwise, only allow the origins in ALLOWED_ORIGINS
-    // TODO I think remove this so cors passes for most things
-    let cors_function = {
-        |origin: &HeaderValue, _request_parts: &Parts| {
-            let Ok(origin) = origin.to_str() else {
-                return false;
-            };
-
-            valid_origin(origin)
-        }
-    };
-
     let server_router = Router::new()
         .route("/", get(root))
         .route("/health-check", get(health_check))
@@ -179,7 +166,7 @@ async fn main() -> anyhow::Result<()> {
         .fallback(fallback)
         .layer(
             CorsLayer::new()
-                .allow_origin(AllowOrigin::predicate(cors_function))
+                .allow_origin(AllowOrigin::any())
                 .allow_headers([http::header::CONTENT_TYPE, http::header::AUTHORIZATION])
                 .allow_methods([
                     Method::GET,
