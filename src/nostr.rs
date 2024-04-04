@@ -1,4 +1,7 @@
+use axum::http::StatusCode;
+use axum::Json;
 use nostr::prelude::XOnlyPublicKey;
+use serde_json::{json, Value};
 use std::{collections::HashMap, str::FromStr};
 
 use crate::State;
@@ -6,12 +9,25 @@ use crate::State;
 pub fn well_known_nip5(
     state: &State,
     name: String,
-) -> anyhow::Result<HashMap<String, XOnlyPublicKey>> {
-    let user = state.db.get_user_by_name(name)?;
+) -> Result<HashMap<String, XOnlyPublicKey>, (StatusCode, Json<Value>)> {
+    let user = state.db.get_user_by_name(name).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"status": "ERROR", "error": e.to_string()})),
+        )
+    })?;
 
     let mut names = HashMap::new();
     if let Some(user) = user {
-        names.insert(user.name, XOnlyPublicKey::from_str(&user.pubkey)?);
+        names.insert(
+            user.name,
+            XOnlyPublicKey::from_str(&user.pubkey).expect("valid npub"),
+        );
+    } else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"status": "ERROR", "error": "Not Found"})),
+        ));
     }
 
     Ok(names)
@@ -78,7 +94,7 @@ mod tests_integration {
             Ok(result) => {
                 assert_eq!(result.get(&username).unwrap().to_string(), pk1.to_string());
             }
-            Err(e) => panic!("shouldn't error: {e}"),
+            Err((_code, json)) => panic!("shouldn't error: {json:?}"),
         }
     }
 }
