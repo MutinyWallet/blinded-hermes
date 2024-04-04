@@ -7,7 +7,7 @@ use mockall::{automock, predicate::*};
 use crate::models::{
     app_user::{AppUser, NewAppUser},
     invoice::{Invoice, NewInvoice},
-    zaps::{NewZap, Zap},
+    zaps::Zap,
 };
 
 #[cfg_attr(test, automock)]
@@ -23,7 +23,7 @@ pub(crate) trait DBConnection {
     fn get_user_by_name(&self, name: String) -> anyhow::Result<Option<AppUser>>;
     fn get_user_by_id(&self, id: i32) -> anyhow::Result<Option<AppUser>>;
     fn get_user_and_increment_counter(&self, name: &str) -> anyhow::Result<Option<AppUser>>;
-    fn insert_new_zap(&self, new_zap: NewZap) -> anyhow::Result<Zap>;
+    fn insert_new_zap(&self, new_zap: Zap) -> anyhow::Result<Zap>;
     fn get_zap_by_id(&self, id: i32) -> anyhow::Result<Option<Zap>>;
     fn set_zap_event_id(&self, zap: Zap, event_id: String) -> anyhow::Result<()>;
 }
@@ -91,7 +91,7 @@ impl DBConnection for PostgresConnection {
         invoice.set_state(conn, s)
     }
 
-    fn insert_new_zap(&self, new_zap: NewZap) -> anyhow::Result<Zap> {
+    fn insert_new_zap(&self, new_zap: Zap) -> anyhow::Result<Zap> {
         let conn = &mut self.db.get()?;
         new_zap.insert(conn)
     }

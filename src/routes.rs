@@ -104,13 +104,13 @@ pub async fn well_known_nip5_route(
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum LnurlType {
     PayRequest,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum LnurlStatus {
     Ok,
@@ -144,7 +144,7 @@ pub async fn well_known_lnurlp_route(
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct LnurlCallbackParams {
     pub amount: u64, // User specified amount in MilliSatoshi

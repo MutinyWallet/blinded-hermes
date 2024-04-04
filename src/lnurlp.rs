@@ -3,7 +3,7 @@ use std::str::FromStr;
 use crate::{
     invoice::{spawn_invoice_subscription, InvoiceState},
     mint::select_gateway,
-    models::{invoice::NewInvoice, zaps::NewZap},
+    models::{invoice::NewInvoice, zaps::Zap},
     routes::{LnurlCallbackParams, LnurlCallbackResponse, LnurlVerifyResponse},
     State,
 };
@@ -137,7 +137,8 @@ pub async fn lnurl_callback(
 
     // save nostr zap request
     if let Some(request) = params.nostr {
-        let new_zap = NewZap {
+        let new_zap = Zap {
+            id: created_invoice.id,
             request,
             event_id: None,
         };
