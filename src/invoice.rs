@@ -54,6 +54,14 @@ pub(crate) async fn handle_pending_invoices(state: &State) -> Result<()> {
             if let Some(client) = state.mm.get_federation_client(federation_id).await {
                 let ln = client.get_first_module::<LightningClientModule>();
                 for invoice in invoices {
+                    // Check if invoice has expired
+                    if invoice.bolt11().is_expired() {
+                        state
+                            .db
+                            .set_invoice_state(invoice, InvoiceState::Cancelled as i32)?;
+                        continue;
+                    }
+
                     // Create subscription to operation if it exists
                     if let Ok(subscription) = ln
                         .subscribe_ln_receive(invoice.op_id.parse().expect("invalid op_id"))
