@@ -1,0 +1,42 @@
+# fly.toml app configuration file generated for hermes-blinded on 2024-04-04T12:34:39-05:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'hermes-blinded'
+primary_region = 'dfw'
+
+[build]
+
+[env]
+  DOMAIN_URL = 'https://mutiny.plus'
+  FM_DB_PATH = '/data'
+  HERMES_PORT = '8080'
+  RUST_LOG = 'debug'
+
+[[mounts]]
+  source = 'hermes_data'
+  destination = '/data'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 2
+  processes = ['app']
+
+  [http_service.concurrency]
+    type = 'requests'
+    hard_limit = 250
+    soft_limit = 200
+
+[[http_service.checks]]
+    interval = '5s'
+    timeout = '5s'
+    grace_period = '10s'
+    method = 'GET'
+    path = '/health-check'
+
+[[vm]]
+  size = 'performance-1x'

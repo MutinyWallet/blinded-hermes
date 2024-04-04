@@ -59,3 +59,9 @@ For signet:
 ```
 flyctl deploy
 ```
+
+For prod:
+
+```
+flyctl deploy --config fly.production.toml
+```
