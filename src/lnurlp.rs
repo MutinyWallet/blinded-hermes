@@ -196,17 +196,24 @@ pub async fn verify(
 
 #[cfg(all(test, feature = "integration-tests"))]
 mod tests_integration {
-    use nostr::{key::FromSkStr, Keys};
+    use fedimint_core::api::InviteCode;
+    use nostr::prelude::{rand, ZapRequestData};
+    use nostr::{key::FromSkStr, EventBuilder, Keys};
     use secp256k1::Secp256k1;
+    use std::path::PathBuf;
     use std::sync::Arc;
 
+    use crate::mint::setup_multimint;
+    use crate::register::generate_random_name;
     use crate::{
-        db::setup_db, lnurlp::well_known_lnurlp, mint::MockMultiMintWrapperTrait,
-        models::app_user::NewAppUser, register::BlindSigner, State,
+        db::setup_db, lnurlp::*, mint::MockMultiMintWrapperTrait, models::app_user::NewAppUser,
+        register::BlindSigner,
     };
 
+    const INVITE_CODE: &str = "fed11qgqzc2nhwden5te0vejkg6tdd9h8gepwvejkg6tdd9h8garhduhx6at5d9h8jmn9wshxxmmd9uqqzgxg6s3evnr6m9zdxr6hxkdkukexpcs3mn7mj3g5pc5dfh63l4tj6g9zk4er";
+
     #[tokio::test]
-    pub async fn well_known_nip5_lookup_test() {
+    pub async fn well_known_lnurlp_lookup_test() {
         dotenv::dotenv().ok();
         let pg_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
         let db = setup_db(pg_url);
@@ -254,6 +261,206 @@ mod tests_integration {
                         .parse()
                         .unwrap()
                 );
+            }
+            Err(e) => panic!("shouldn't error: {e}"),
+        }
+    }
+
+    #[tokio::test]
+    pub async fn amt_callback_test() {
+        dotenv::dotenv().ok();
+        let pg_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        let db = setup_db(pg_url);
+
+        // nostr
+        let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
+        let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
+        let nostr = nostr_sdk::Client::new(&nostr_sk);
+
+        // create blind signer
+        let free_signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+        let paid_signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+
+        // swap out fm with a mock here since that's not what is being tested
+        let mock_mm = Arc::new(MockMultiMintWrapperTrait::new());
+
+        let state = State {
+            db: db.clone(),
+            mm: mock_mm,
+            secp: Secp256k1::new(),
+            nostr,
+            free_pk: free_signer.pk,
+            paid_pk: paid_signer.pk,
+            domain: "http://hello.com".to_string(),
+        };
+
+        let invite_code = InviteCode::from_str(INVITE_CODE).unwrap();
+        // generate random username and key
+        let username = generate_random_name(&state).unwrap();
+        let pk = Keys::generate().public_key();
+        let user = NewAppUser {
+            pubkey: pk.to_string(),
+            name: username.clone(),
+            federation_id: invite_code.federation_id().to_string(),
+            unblinded_msg: pk.to_string(),
+            federation_invite_code: INVITE_CODE.to_string(),
+        };
+
+        state.db.insert_new_user(user).unwrap();
+
+        let params = LnurlCallbackParams {
+            amount: 1,
+            ..Default::default()
+        };
+
+        match lnurl_callback(&state, username.clone(), params).await {
+            Ok(_) => panic!("unexpected ok"),
+            Err(e) => assert!(e.to_string().contains("MIN_AMOUNT")),
+        }
+
+        let params = LnurlCallbackParams {
+            amount: u64::MAX,
+            ..Default::default()
+        };
+
+        match lnurl_callback(&state, username, params).await {
+            Ok(_) => panic!("unexpected ok"),
+            Err(e) => assert!(e.to_string().contains("MAX_AMOUNT")),
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    pub async fn callback_test() {
+        dotenv::dotenv().ok();
+        let pg_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        let db = setup_db(pg_url);
+
+        // nostr
+        let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
+        let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
+        let nostr = nostr_sdk::Client::new(&nostr_sk);
+
+        // create blind signer
+        let free_signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+        let paid_signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+
+        // generate random tmp db path
+        let tmp_db_path = format!("/tmp/test-{}.db", rand::random::<u64>());
+
+        let mm = setup_multimint(PathBuf::from_str(&tmp_db_path).unwrap())
+            .await
+            .unwrap();
+
+        let state = State {
+            db: db.clone(),
+            mm,
+            secp: Secp256k1::new(),
+            nostr,
+            free_pk: free_signer.pk,
+            paid_pk: paid_signer.pk,
+            domain: "http://hello.com".to_string(),
+        };
+
+        let invite_code = InviteCode::from_str(INVITE_CODE).unwrap();
+        // generate random username and key
+        let username = generate_random_name(&state).unwrap();
+        let pk = Keys::generate().public_key();
+        let user = NewAppUser {
+            pubkey: pk.to_string(),
+            name: username.clone(),
+            federation_id: invite_code.federation_id().to_string(),
+            unblinded_msg: pk.to_string(),
+            federation_invite_code: INVITE_CODE.to_string(),
+        };
+
+        state.mm.register_new_federation(invite_code).await.unwrap();
+
+        state.db.insert_new_user(user).unwrap();
+
+        let params = LnurlCallbackParams {
+            amount: 10_000,
+            nonce: None,
+            comment: None,
+            proofofpayer: None,
+            nostr: None,
+        };
+
+        match lnurl_callback(&state, username, params).await {
+            Ok(result) => {
+                assert_eq!(result.status, LnurlStatus::Ok);
+                assert!(!result.pr.is_empty());
+            }
+            Err(e) => panic!("shouldn't error: {e}"),
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    pub async fn callback_with_zap_test() {
+        dotenv::dotenv().ok();
+        let pg_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        let db = setup_db(pg_url);
+
+        // nostr
+        let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
+        let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
+        let nostr = nostr_sdk::Client::new(&nostr_sk);
+
+        // create blind signer
+        let free_signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+        let paid_signer = BlindSigner::derive(&[0u8; 32], 0, 0);
+
+        // generate random tmp db path
+        let tmp_db_path = format!("/tmp/test-{}.db", rand::random::<u64>());
+
+        let mm = setup_multimint(PathBuf::from_str(&tmp_db_path).unwrap())
+            .await
+            .unwrap();
+
+        let state = State {
+            db: db.clone(),
+            mm,
+            secp: Secp256k1::new(),
+            nostr,
+            free_pk: free_signer.pk,
+            paid_pk: paid_signer.pk,
+            domain: "http://hello.com".to_string(),
+        };
+
+        let invite_code = InviteCode::from_str(INVITE_CODE).unwrap();
+        // generate random username and key
+        let username = generate_random_name(&state).unwrap();
+        let pk = Keys::generate().public_key();
+        let user = NewAppUser {
+            pubkey: pk.to_string(),
+            name: username.clone(),
+            federation_id: invite_code.federation_id().to_string(),
+            unblinded_msg: pk.to_string(),
+            federation_invite_code: INVITE_CODE.to_string(),
+        };
+
+        state.mm.register_new_federation(invite_code).await.unwrap();
+
+        state.db.insert_new_user(user).unwrap();
+
+        let zap_request = {
+            let data = ZapRequestData::new(pk, vec![]);
+            EventBuilder::new_zap_request(data)
+                .to_event(&Keys::generate())
+                .unwrap()
+        };
+
+        let params = LnurlCallbackParams {
+            amount: 10_000,
+            nonce: None,
+            comment: None,
+            proofofpayer: None,
+            nostr: Some(zap_request.as_json()),
+        };
+
+        match lnurl_callback(&state, username, params).await {
+            Ok(result) => {
+                assert_eq!(result.status, LnurlStatus::Ok);
+                assert!(!result.pr.is_empty());
             }
             Err(e) => panic!("shouldn't error: {e}"),
         }
