@@ -17,6 +17,8 @@ use nostr::{Event, JsonUtil, Kind};
 
 use crate::routes::{LnurlStatus, LnurlType, LnurlWellKnownResponse};
 
+const INVALID_AMT_ERR: &str = "Invalid amount. Make sure the amount is within the range.";
+
 fn calc_metadata(name: &str, domain: &str) -> String {
     format!("[[\"text/identifier\",\"{name}@{domain}\"],[\"text/plain\",\"Sats for {name}\"]]")
 }
@@ -27,7 +29,7 @@ pub async fn well_known_lnurlp(
 ) -> anyhow::Result<LnurlWellKnownResponse> {
     let user = state.db.get_user_by_name(name.clone())?;
     if user.is_none() {
-        return Err(anyhow!("NotFound"));
+        return Err(anyhow!("Not Found"));
     }
 
     let res = LnurlWellKnownResponse {
@@ -55,22 +57,17 @@ pub async fn lnurl_callback(
 ) -> anyhow::Result<LnurlCallbackResponse> {
     let user = state.db.get_user_and_increment_counter(&name)?;
     if user.is_none() {
-        return Err(anyhow!("NotFound"));
+        return Err(anyhow!("Not Found"));
     }
     let user = user.expect("just checked");
 
-    if params.amount < MIN_AMOUNT {
-        return Err(anyhow::anyhow!(
-            "Amount ({}) < MIN_AMOUNT ({MIN_AMOUNT})",
-            params.amount
-        ));
-    }
+    let amount_msats = match params.amount {
+        Some(amt) => amt,
+        None => return Err(anyhow!(INVALID_AMT_ERR)),
+    };
 
-    if params.amount > MAX_AMOUNT {
-        return Err(anyhow::anyhow!(
-            "Amount ({}) < MAX_AMOUNT ({MAX_AMOUNT})",
-            params.amount
-        ));
+    if !(MIN_AMOUNT..=MAX_AMOUNT).contains(&amount_msats) {
+        return Err(anyhow::anyhow!(INVALID_AMT_ERR));
     }
 
     // verify nostr param is a zap request if we have one
@@ -84,13 +81,13 @@ pub async fn lnurl_callback(
     }
 
     let federation_id = FederationId::from_str(&user.federation_id)
-        .map_err(|e| anyhow::anyhow!("Invalid federation_id: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("Internal error: Invalid federation_id: {e}"))?;
 
     let client = state
         .mm
         .get_federation_client(federation_id)
         .await
-        .ok_or(anyhow!("NotFound"))?;
+        .ok_or(anyhow!("Internal error: No federation client"))?;
 
     let ln = client.get_first_module::<LightningClientModule>();
 
@@ -107,11 +104,11 @@ pub async fn lnurl_callback(
 
     let gateway = select_gateway(&client)
         .await
-        .ok_or(anyhow!("No gateway found for federation"))?;
+        .ok_or(anyhow!("Internal error: No gateway found for federation"))?;
 
     let (op_id, pr, preimage) = ln
         .create_bolt11_invoice_for_user_tweaked(
-            Amount::from_msats(params.amount),
+            Amount::from_msats(amount_msats),
             Bolt11InvoiceDescription::Hash(&desc_hash),
             Some(86_400), // 1 day expiry
             user.pubkey().public_key(Parity::Even),
@@ -129,7 +126,7 @@ pub async fn lnurl_callback(
         app_user_id: user.id,
         user_invoice_index: invoice_index,
         bolt11: pr.to_string(),
-        amount: params.amount as i64,
+        amount: amount_msats as i64,
         state: InvoiceState::Pending as i32,
     };
 
@@ -156,7 +153,7 @@ pub async fn lnurl_callback(
     let verify_url = format!("{}/lnurlp/{}/verify/{}", state.domain, user.name, op_id);
 
     Ok(LnurlCallbackResponse {
-        pr: pr.to_string(),
+        pr,
         success_action: None,
         status: LnurlStatus::Ok,
         reason: None,
@@ -173,15 +170,15 @@ pub async fn verify(
     let invoice = state
         .db
         .get_invoice_by_op_id(op_id)?
-        .ok_or(anyhow::anyhow!("NotFound"))?;
+        .ok_or(anyhow::anyhow!("Not Found"))?;
 
     let user = state
         .db
         .get_user_by_name(name)?
-        .ok_or(anyhow::anyhow!("NotFound"))?;
+        .ok_or(anyhow::anyhow!("Not Found"))?;
 
     if invoice.app_user_id != user.id {
-        return Err(anyhow::anyhow!("NotFound"));
+        return Err(anyhow::anyhow!("Not Found"));
     }
 
     let verify_response = LnurlVerifyResponse {
@@ -309,23 +306,23 @@ mod tests_integration {
         state.db.insert_new_user(user).unwrap();
 
         let params = LnurlCallbackParams {
-            amount: 1,
+            amount: Some(1),
             ..Default::default()
         };
 
         match lnurl_callback(&state, username.clone(), params).await {
             Ok(_) => panic!("unexpected ok"),
-            Err(e) => assert!(e.to_string().contains("MIN_AMOUNT")),
+            Err(e) => assert_eq!(e.to_string(), INVALID_AMT_ERR),
         }
 
         let params = LnurlCallbackParams {
-            amount: u64::MAX,
+            amount: Some(u64::MAX),
             ..Default::default()
         };
 
         match lnurl_callback(&state, username, params).await {
             Ok(_) => panic!("unexpected ok"),
-            Err(e) => assert!(e.to_string().contains("MAX_AMOUNT")),
+            Err(e) => assert_eq!(e.to_string(), INVALID_AMT_ERR),
         }
     }
 
@@ -378,7 +375,7 @@ mod tests_integration {
         state.db.insert_new_user(user).unwrap();
 
         let params = LnurlCallbackParams {
-            amount: 10_000,
+            amount: Some(10_000),
             nonce: None,
             comment: None,
             proofofpayer: None,
@@ -388,7 +385,7 @@ mod tests_integration {
         match lnurl_callback(&state, username, params).await {
             Ok(result) => {
                 assert_eq!(result.status, LnurlStatus::Ok);
-                assert!(!result.pr.is_empty());
+                assert!(!result.pr.is_expired());
             }
             Err(e) => panic!("shouldn't error: {e}"),
         }
@@ -450,7 +447,7 @@ mod tests_integration {
         };
 
         let params = LnurlCallbackParams {
-            amount: 10_000,
+            amount: Some(10_000),
             nonce: None,
             comment: None,
             proofofpayer: None,
@@ -460,7 +457,7 @@ mod tests_integration {
         match lnurl_callback(&state, username, params).await {
             Ok(result) => {
                 assert_eq!(result.status, LnurlStatus::Ok);
-                assert!(!result.pr.is_empty());
+                assert!(!result.pr.is_expired());
             }
             Err(e) => panic!("shouldn't error: {e}"),
         }

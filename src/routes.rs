@@ -7,16 +7,31 @@ use crate::{
 use axum::extract::{Path, Query};
 use axum::headers::Origin;
 use axum::http::StatusCode;
-use axum::response::Redirect;
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::Extension;
 use axum::{Json, TypedHeader};
 use fedimint_core::Amount;
 use log::{debug, error};
 use nostr::prelude::XOnlyPublicKey;
 use serde::{de, Deserialize, Deserializer, Serialize};
+use serde_json::{json, Value};
 use std::{collections::HashMap, fmt::Display, str::FromStr};
+use fedimint_ln_common::lightning_invoice::Bolt11Invoice;
 use tbs::AggregatePublicKey;
 use url::Url;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LnUrlErrorResponse {
+    pub status: LnurlStatus,
+    pub reason: String,
+}
+
+impl IntoResponse for LnUrlErrorResponse {
+    fn into_response(self) -> Response {
+        let body = serde_json::to_value(self).expect("valid json");
+        (StatusCode::OK, Json(body)).into_response()
+    }
+}
 
 pub async fn check_username(
     origin: Option<TypedHeader<Origin>>,
@@ -85,7 +100,7 @@ pub async fn register_route(
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct UserWellKnownNip5Req {
-    pub name: String,
+    pub name: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -96,11 +111,17 @@ pub struct UserWellKnownNip5Resp {
 pub async fn well_known_nip5_route(
     Extension(state): Extension<State>,
     Query(params): Query<UserWellKnownNip5Req>,
-) -> Result<Json<UserWellKnownNip5Resp>, (StatusCode, String)> {
+) -> Result<Json<UserWellKnownNip5Resp>, (StatusCode, Json<Value>)> {
     debug!("well_known_nip5_route");
-    match well_known_nip5(&state, params.name) {
-        Ok(res) => Ok(Json(UserWellKnownNip5Resp { names: res })),
-        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    match params.name {
+        Some(name) => {
+            let names = well_known_nip5(&state, name)?;
+            Ok(Json(UserWellKnownNip5Resp { names }))
+        }
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"status": "ERROR", "error": "Not Found"})),
+        )),
     }
 }
 
@@ -136,18 +157,21 @@ pub struct LnurlWellKnownResponse {
 pub async fn well_known_lnurlp_route(
     Extension(state): Extension<State>,
     Path(username): Path<String>,
-) -> Result<Json<LnurlWellKnownResponse>, (StatusCode, String)> {
+) -> Result<Json<LnurlWellKnownResponse>, LnUrlErrorResponse> {
     debug!("well_known_lnurlp_route");
     match well_known_lnurlp(&state, username).await {
         Ok(res) => Ok(Json(res)),
-        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+        Err(e) => Err(LnUrlErrorResponse {
+            status: LnurlStatus::Error,
+            reason: e.to_string(),
+        }),
     }
 }
 
 #[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct LnurlCallbackParams {
-    pub amount: u64, // User specified amount in MilliSatoshi
+    pub amount: Option<u64>, // User specified amount in MilliSatoshi
     #[serde(default, deserialize_with = "empty_string_as_none")]
     pub nonce: Option<String>, // Optional parameter used to prevent server response caching
     #[serde(default, deserialize_with = "empty_string_as_none")]
@@ -164,7 +188,7 @@ pub struct LnurlCallbackResponse {
     pub status: LnurlStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
-    pub pr: String, // BOLT11 invoice
+    pub pr: Bolt11Invoice,
     pub verify: Url,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub success_action: Option<LnurlCallbackSuccessAction>,
@@ -183,11 +207,14 @@ pub async fn lnurl_callback_route(
     Extension(state): Extension<State>,
     Query(params): Query<LnurlCallbackParams>,
     Path(username): Path<String>,
-) -> Result<Json<LnurlCallbackResponse>, (StatusCode, String)> {
+) -> Result<Json<LnurlCallbackResponse>, LnUrlErrorResponse> {
     debug!("lnurl_callback_route");
     match lnurl_callback(&state, username, params).await {
         Ok(res) => Ok(Json(res)),
-        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+        Err(e) => Err(LnUrlErrorResponse {
+            status: LnurlStatus::Error,
+            reason: e.to_string(),
+        }),
     }
 }
 
@@ -203,11 +230,14 @@ pub struct LnurlVerifyResponse {
 pub async fn lnurl_verify_route(
     Extension(state): Extension<State>,
     Path((username, op_id)): Path<(String, String)>,
-) -> Result<Json<LnurlVerifyResponse>, (StatusCode, String)> {
+) -> Result<Json<LnurlVerifyResponse>, LnUrlErrorResponse> {
     debug!("lnurl_callback_route");
     match verify(&state, username, op_id).await {
         Ok(res) => Ok(Json(res)),
-        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+        Err(e) => Err(LnUrlErrorResponse {
+            status: LnurlStatus::Error,
+            reason: e.to_string(),
+        }),
     }
 }
 
