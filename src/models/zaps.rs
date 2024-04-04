@@ -22,12 +22,12 @@ pub struct Zap {
 }
 
 impl Zap {
-    pub fn insert(&self, conn: &mut PgConnection) -> anyhow::Result<()> {
-        diesel::insert_into(zaps::table)
+    pub fn insert(&self, conn: &mut PgConnection) -> anyhow::Result<Zap> {
+        let res = diesel::insert_into(zaps::table)
             .values(self)
-            .execute(conn)?;
+            .get_result(conn)?;
 
-        Ok(())
+        Ok(res)
     }
 
     pub fn get_zaps(conn: &mut PgConnection) -> anyhow::Result<Vec<Zap>> {
@@ -51,18 +51,3 @@ impl Zap {
     }
 }
 
-#[derive(Insertable)]
-#[diesel(table_name = zaps)]
-pub struct NewZap {
-    pub request: String,
-    pub event_id: Option<String>,
-}
-
-impl NewZap {
-    pub fn insert(&self, conn: &mut PgConnection) -> anyhow::Result<Zap> {
-        diesel::insert_into(zaps::table)
-            .values(self)
-            .get_result::<Zap>(conn)
-            .map_err(|e| e.into())
-    }
-}
