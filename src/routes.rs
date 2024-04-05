@@ -11,12 +11,12 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::Extension;
 use axum::{Json, TypedHeader};
 use fedimint_core::Amount;
-use log::{debug, error};
+use fedimint_ln_common::lightning_invoice::Bolt11Invoice;
+use log::{error, info};
 use nostr::prelude::XOnlyPublicKey;
 use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 use std::{collections::HashMap, fmt::Display, str::FromStr};
-use fedimint_ln_common::lightning_invoice::Bolt11Invoice;
 use tbs::AggregatePublicKey;
 use url::Url;
 
@@ -38,11 +38,14 @@ pub async fn check_username(
     Extension(state): Extension<State>,
     Path(username): Path<String>,
 ) -> Result<Json<bool>, (StatusCode, String)> {
-    debug!("check_username: {}", username);
+    info!("check_username: {}", username);
     validate_cors(origin)?;
 
-    match check_available(&state, username) {
-        Ok(res) => Ok(Json(res)),
+    match check_available(&state, username.clone()) {
+        Ok(res) => {
+            info!("check_username finished: {}", username);
+            Ok(Json(res))
+        }
         Err(e) => Err(handle_anyhow_error("check_username", e)),
     }
 }
@@ -52,20 +55,23 @@ pub async fn check_pubkey(
     Extension(state): Extension<State>,
     Path(pubkey): Path<String>,
 ) -> Result<Json<Option<String>>, (StatusCode, String)> {
-    debug!("check_pubkey: {}", pubkey);
+    info!("check_pubkey: {}", pubkey);
     validate_cors(origin)?;
 
     // check it's a valid pubkey
     XOnlyPublicKey::from_str(&pubkey)
         .map_err(|_| (StatusCode::BAD_REQUEST, "Nostr Pubkey Invalid".to_string()))?;
 
-    match check_registered_pubkey(&state, pubkey) {
-        Ok(res) => Ok(Json(res)),
+    match check_registered_pubkey(&state, pubkey.clone()) {
+        Ok(res) => {
+            info!("check_pubkey finished: {}", pubkey);
+            Ok(Json(res))
+        }
         Err(e) => Err(handle_anyhow_error("check_pubkey", e)),
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct RegisterRequest {
     pub name: Option<String>,
     pub pubkey: String,
@@ -90,11 +96,17 @@ pub async fn register_route(
     Extension(state): Extension<State>,
     Json(req): Json<RegisterRequest>,
 ) -> Result<Json<RegisterResponse>, (StatusCode, String)> {
-    debug!("register");
+    info!("register: {:?}", req.name);
     validate_cors(origin)?;
-    match register(&state, req).await {
-        Ok(res) => Ok(Json(res)),
-        Err(e) => Err(e),
+    match register(&state, req.clone()).await {
+        Ok(res) => {
+            info!("register finished: {:?}", req.name);
+            Ok(Json(res))
+        }
+        Err(e) => {
+            error!("Error in register {:?}: {e:?}", req.name);
+            Err(e)
+        }
     }
 }
 
@@ -112,16 +124,23 @@ pub async fn well_known_nip5_route(
     Extension(state): Extension<State>,
     Query(params): Query<UserWellKnownNip5Req>,
 ) -> Result<Json<UserWellKnownNip5Resp>, (StatusCode, Json<Value>)> {
-    debug!("well_known_nip5_route");
-    match params.name {
+    info!("well_known_nip5_route: {:?}", params.name);
+    match params.name.clone() {
         Some(name) => {
             let names = well_known_nip5(&state, name)?;
+            info!("well_known_nip5_route finished: {:?}", params.name);
             Ok(Json(UserWellKnownNip5Resp { names }))
         }
-        None => Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({"status": "ERROR", "error": "Not Found"})),
-        )),
+        None => {
+            error!(
+                "Error in well_known_nip5_route {:?}: Not Found",
+                params.name
+            );
+            Err((
+                StatusCode::NOT_FOUND,
+                Json(json!({"status": "ERROR", "error": "Not Found"})),
+            ))
+        }
     }
 }
 
@@ -158,13 +177,19 @@ pub async fn well_known_lnurlp_route(
     Extension(state): Extension<State>,
     Path(username): Path<String>,
 ) -> Result<Json<LnurlWellKnownResponse>, LnUrlErrorResponse> {
-    debug!("well_known_lnurlp_route");
-    match well_known_lnurlp(&state, username).await {
-        Ok(res) => Ok(Json(res)),
-        Err(e) => Err(LnUrlErrorResponse {
-            status: LnurlStatus::Error,
-            reason: e.to_string(),
-        }),
+    info!("well_known_lnurlp_route: {username}");
+    match well_known_lnurlp(&state, username.clone()).await {
+        Ok(res) => {
+            info!("well_known_lnurlp_route finished: {username}");
+            Ok(Json(res))
+        }
+        Err(e) => {
+            error!("Error in well_known_lnurlp_route {username}: {e:?}");
+            Err(LnUrlErrorResponse {
+                status: LnurlStatus::Error,
+                reason: e.to_string(),
+            })
+        }
     }
 }
 
@@ -208,13 +233,19 @@ pub async fn lnurl_callback_route(
     Query(params): Query<LnurlCallbackParams>,
     Path(username): Path<String>,
 ) -> Result<Json<LnurlCallbackResponse>, LnUrlErrorResponse> {
-    debug!("lnurl_callback_route");
-    match lnurl_callback(&state, username, params).await {
-        Ok(res) => Ok(Json(res)),
-        Err(e) => Err(LnUrlErrorResponse {
-            status: LnurlStatus::Error,
-            reason: e.to_string(),
-        }),
+    info!("lnurl_callback_route: {username}");
+    match lnurl_callback(&state, username.clone(), params).await {
+        Ok(res) => {
+            info!("lnurl_callback_route finished: {username}");
+            Ok(Json(res))
+        }
+        Err(e) => {
+            error!("Error in lnurl_callback_route {username}: {e:?}");
+            Err(LnUrlErrorResponse {
+                status: LnurlStatus::Error,
+                reason: e.to_string(),
+            })
+        }
     }
 }
 
@@ -231,13 +262,19 @@ pub async fn lnurl_verify_route(
     Extension(state): Extension<State>,
     Path((username, op_id)): Path<(String, String)>,
 ) -> Result<Json<LnurlVerifyResponse>, LnUrlErrorResponse> {
-    debug!("lnurl_callback_route");
-    match verify(&state, username, op_id).await {
-        Ok(res) => Ok(Json(res)),
-        Err(e) => Err(LnUrlErrorResponse {
-            status: LnurlStatus::Error,
-            reason: e.to_string(),
-        }),
+    info!("lnurl_callback_route: {username}");
+    match verify(&state, username.clone(), op_id).await {
+        Ok(res) => {
+            info!("lnurl_callback_route finished: {username}");
+            Ok(Json(res))
+        }
+        Err(e) => {
+            error!("Error in lnurl_callback_route {username}: {e:?}");
+            Err(LnUrlErrorResponse {
+                status: LnurlStatus::Error,
+                reason: e.to_string(),
+            })
+        }
     }
 }
 
