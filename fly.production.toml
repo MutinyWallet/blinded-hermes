@@ -12,7 +12,7 @@ primary_region = 'dfw'
   DOMAIN_URL = 'https://mutiny.plus'
   FM_DB_PATH = '/data'
   HERMES_PORT = '8080'
-  RUST_LOG = 'debug'
+  RUST_LOG = 'info'
 
 [[mounts]]
   source = 'hermes_data'
