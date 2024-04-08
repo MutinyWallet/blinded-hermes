@@ -181,10 +181,16 @@ pub async fn verify(
         return Err(anyhow::anyhow!("Not Found"));
     }
 
+    let preimage = if invoice.state == InvoiceState::Settled as i32 {
+        Some(invoice.preimage)
+    } else {
+        None
+    };
+
     let verify_response = LnurlVerifyResponse {
         status: LnurlStatus::Ok,
         settled: invoice.state == InvoiceState::Settled as i32,
-        preimage: invoice.preimage,
+        preimage,
         pr: invoice.bolt11,
     };
 
