@@ -1,5 +1,7 @@
+use std::str::FromStr;
 use crate::models::schema::invoice;
 use diesel::prelude::*;
+use fedimint_ln_common::lightning_invoice::Bolt11Invoice;
 use serde::{Deserialize, Serialize};
 
 #[derive(
@@ -20,6 +22,10 @@ pub struct Invoice {
 }
 
 impl Invoice {
+    pub fn bolt11(&self) -> Bolt11Invoice {
+        Bolt11Invoice::from_str(&self.bolt11).expect("invalid bolt11")
+    }
+
     pub fn get_invoices(conn: &mut PgConnection) -> anyhow::Result<Vec<Invoice>> {
         Ok(invoice::table.load::<Self>(conn)?)
     }
