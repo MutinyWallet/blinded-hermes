@@ -196,7 +196,7 @@ pub async fn lnurl_callback_route(
 pub struct LnurlVerifyResponse {
     pub status: LnurlStatus,
     pub settled: bool,
-    pub preimage: String,
+    pub preimage: Option<String>,
     pub pr: String,
 }
 
