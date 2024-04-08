@@ -132,5 +132,15 @@ pub(crate) async fn select_gateway(client: &ClientHandleArc) -> Option<Lightning
         }
     }
 
+    // if no gateway found, just select the first one we can find
+    if selected_gateway.is_none() {
+        for gateway in ln.list_gateways().await {
+            if let Some(g) = ln.select_gateway(&gateway.info.gateway_id).await {
+                selected_gateway = Some(g);
+                break;
+            }
+        }
+    }
+
     selected_gateway
 }
