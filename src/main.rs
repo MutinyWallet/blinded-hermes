@@ -46,6 +46,18 @@ const ALLOWED_LOCALHOST: &str = "http://127.0.0.1:";
 
 const API_VERSION: &str = "v1";
 
+const RELAYS: [&str; 9] = [
+    "wss://nostr.mutinywallet.com",
+    "wss://relay.mutinywallet.com",
+    "wss://relay.snort.social",
+    "wss://nos.lol",
+    "wss://relay.damus.io",
+    "wss://relay.primal.net",
+    "wss://nostr.wine",
+    "wss://nostr.zbd.gg",
+    "wss://relay.nos.social",
+];
+
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct SignerIdentity {
     pub service_id: i32,
@@ -116,9 +128,7 @@ async fn main() -> anyhow::Result<()> {
     let nostr_nsec_str = std::env::var("NSEC").expect("NSEC must be set");
     let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
     let nostr = nostr_sdk::Client::new(&nostr_sk);
-    nostr.add_relay("wss://nostr.mutinywallet.com").await?;
-    nostr.add_relay("wss://relay.mutinywallet.com").await?;
-    nostr.add_relay("wss://relay.damus.io").await?;
+    nostr.add_relays(RELAYS).await.expect("Failed to add relays");
     nostr.connect().await;
 
     // domain
