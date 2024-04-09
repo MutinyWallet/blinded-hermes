@@ -13,7 +13,6 @@ use axum::{Json, TypedHeader};
 use fedimint_core::Amount;
 use fedimint_ln_common::lightning_invoice::Bolt11Invoice;
 use log::{error, info};
-use nostr::prelude::XOnlyPublicKey;
 use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 use std::{collections::HashMap, fmt::Display, str::FromStr};
@@ -59,7 +58,7 @@ pub async fn check_pubkey(
     validate_cors(origin)?;
 
     // check it's a valid pubkey
-    XOnlyPublicKey::from_str(&pubkey)
+    nostr::PublicKey::from_str(&pubkey)
         .map_err(|_| (StatusCode::BAD_REQUEST, "Nostr Pubkey Invalid".to_string()))?;
 
     match check_registered_pubkey(&state, pubkey.clone()) {
@@ -117,7 +116,7 @@ pub struct UserWellKnownNip5Req {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct UserWellKnownNip5Resp {
-    pub names: HashMap<String, XOnlyPublicKey>,
+    pub names: HashMap<String, nostr::PublicKey>,
 }
 
 pub async fn well_known_nip5_route(
@@ -169,7 +168,7 @@ pub struct LnurlWellKnownResponse {
     pub tag: LnurlType,
     pub status: LnurlStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub nostr_pubkey: Option<XOnlyPublicKey>,
+    pub nostr_pubkey: Option<nostr::PublicKey>,
     pub allows_nostr: bool,
 }
 

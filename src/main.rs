@@ -4,7 +4,7 @@ use axum::routing::get;
 use axum::{extract::DefaultBodyLimit, routing::post};
 use axum::{http, Extension, Router, TypedHeader};
 use log::{error, info};
-use nostr_sdk::nostr::{key::FromSkStr, Keys};
+use nostr_sdk::nostr::Keys;
 use secp256k1::{All, Secp256k1};
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 use tbs::{AggregatePublicKey, PubKeyPoint};
@@ -18,8 +18,7 @@ use crate::{
     mint::{setup_multimint, MultiMintWrapperTrait},
     routes::{
         check_pubkey, check_username, health_check, lnurl_callback_route, lnurl_verify_route,
-        register_route, root, validate_cors, well_known_lnurlp_route,
-        well_known_nip5_route,
+        register_route, root, validate_cors, well_known_lnurlp_route, well_known_nip5_route,
     },
 };
 
@@ -70,6 +69,7 @@ pub struct State {
     mm: Arc<dyn MultiMintWrapperTrait + Send + Sync>,
     pub secp: Secp256k1<All>,
     pub nostr: nostr_sdk::Client,
+    pub nostr_sk: Keys,
     pub domain: String,
     pub free_pk: AggregatePublicKey,
     pub paid_pk: AggregatePublicKey,
@@ -126,9 +126,12 @@ async fn main() -> anyhow::Result<()> {
 
     // nostr
     let nostr_nsec_str = std::env::var("NSEC").expect("NSEC must be set");
-    let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
+    let nostr_sk = Keys::from_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
     let nostr = nostr_sdk::Client::new(&nostr_sk);
-    nostr.add_relays(RELAYS).await.expect("Failed to add relays");
+    nostr
+        .add_relays(RELAYS)
+        .await
+        .expect("Failed to add relays");
     nostr.connect().await;
 
     // domain
@@ -143,6 +146,7 @@ async fn main() -> anyhow::Result<()> {
         mm,
         secp,
         nostr,
+        nostr_sk,
         domain,
         free_pk,
         paid_pk,

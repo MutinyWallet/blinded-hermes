@@ -40,7 +40,7 @@ pub async fn well_known_lnurlp(
         comment_allowed: None,
         tag: LnurlType::PayRequest,
         status: LnurlStatus::Ok,
-        nostr_pubkey: Some(state.nostr.keys().await.public_key()),
+        nostr_pubkey: Some(state.nostr_sk.public_key()),
         allows_nostr: true,
     };
 
@@ -201,7 +201,7 @@ pub async fn verify(
 mod tests_integration {
     use fedimint_core::api::InviteCode;
     use nostr::prelude::{rand, ZapRequestData};
-    use nostr::{key::FromSkStr, EventBuilder, Keys};
+    use nostr::{EventBuilder, Keys};
     use secp256k1::Secp256k1;
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -226,7 +226,7 @@ mod tests_integration {
 
         // nostr
         let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
-        let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
+        let nostr_sk = Keys::from_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
         let nostr = nostr_sdk::Client::new(&nostr_sk);
 
         // create blind signer
@@ -242,6 +242,7 @@ mod tests_integration {
             free_pk: free_signer.pk,
             paid_pk: paid_signer.pk,
             domain: "http://hello.com".to_string(),
+            nostr_sk,
         };
 
         let username = "wellknownuser".to_string();
@@ -277,7 +278,7 @@ mod tests_integration {
 
         // nostr
         let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
-        let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
+        let nostr_sk = Keys::from_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
         let nostr = nostr_sdk::Client::new(&nostr_sk);
 
         // create blind signer
@@ -295,6 +296,7 @@ mod tests_integration {
             free_pk: free_signer.pk,
             paid_pk: paid_signer.pk,
             domain: "http://hello.com".to_string(),
+            nostr_sk,
         };
 
         let invite_code = InviteCode::from_str(INVITE_CODE).unwrap();
@@ -340,7 +342,7 @@ mod tests_integration {
 
         // nostr
         let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
-        let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
+        let nostr_sk = Keys::from_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
         let nostr = nostr_sdk::Client::new(&nostr_sk);
 
         // create blind signer
@@ -362,6 +364,7 @@ mod tests_integration {
             free_pk: free_signer.pk,
             paid_pk: paid_signer.pk,
             domain: "http://hello.com".to_string(),
+            nostr_sk,
         };
 
         let invite_code = InviteCode::from_str(INVITE_CODE).unwrap();
@@ -405,7 +408,7 @@ mod tests_integration {
 
         // nostr
         let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
-        let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
+        let nostr_sk = Keys::from_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
         let nostr = nostr_sdk::Client::new(&nostr_sk);
 
         // create blind signer
@@ -427,6 +430,7 @@ mod tests_integration {
             free_pk: free_signer.pk,
             paid_pk: paid_signer.pk,
             domain: "http://hello.com".to_string(),
+            nostr_sk,
         };
 
         let invite_code = InviteCode::from_str(INVITE_CODE).unwrap();
@@ -447,7 +451,7 @@ mod tests_integration {
 
         let zap_request = {
             let data = ZapRequestData::new(pk, vec![]);
-            EventBuilder::new_zap_request(data)
+            EventBuilder::public_zap_request(data)
                 .to_event(&Keys::generate())
                 .unwrap()
         };
