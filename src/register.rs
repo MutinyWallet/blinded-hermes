@@ -9,7 +9,7 @@ use fedimint_core::api::InviteCode;
 use lazy_regex::*;
 use log::error;
 use names::Generator;
-use nostr::prelude::XOnlyPublicKey;
+use nostr::PublicKey;
 use reqwest::StatusCode;
 
 pub static ALPHANUMERIC_REGEX: Lazy<Regex> = lazy_regex!("^[a-z0-9-_.]+$");
@@ -57,7 +57,7 @@ pub async fn register(
     if requested_paid && !is_valid_name(&req.name.clone().unwrap()) {
         return Err((StatusCode::BAD_REQUEST, "Unavailable".to_string()));
     }
-    XOnlyPublicKey::from_str(&req.pubkey)
+    PublicKey::from_str(&req.pubkey)
         .map_err(|_| (StatusCode::BAD_REQUEST, "Nostr Pubkey Invalid".to_string()))?;
 
     // a different signer based on paid vs free
@@ -220,7 +220,7 @@ mod tests_integration {
     use std::{str::FromStr, sync::Arc};
 
     use fedimint_core::{api::InviteCode, config::FederationId, PeerId};
-    use nostr::{key::FromSkStr, Keys};
+    use nostr::Keys;
     use secp256k1::Secp256k1;
     use tbs::{blind_message, unblind_signature, BlindingKey};
 
@@ -243,7 +243,7 @@ mod tests_integration {
         let mock_mm = Arc::new(MockMultiMintWrapperTrait::new());
 
         let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
-        let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
+        let nostr_sk = Keys::from_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
         let nostr = nostr_sdk::Client::new(&nostr_sk);
 
         // create blind signer
@@ -258,6 +258,7 @@ mod tests_integration {
             free_pk: free_signer.pk,
             paid_pk: paid_signer.pk,
             domain: "http://127.0.0.1:8080".to_string(),
+            nostr_sk,
         };
 
         let name = "veryuniquename123".to_string();
@@ -295,7 +296,7 @@ mod tests_integration {
 
         // nostr
         let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
-        let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
+        let nostr_sk = Keys::from_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
         let nostr = nostr_sdk::Client::new(&nostr_sk);
 
         // create blind signer
@@ -311,6 +312,7 @@ mod tests_integration {
             free_pk: free_signer.pk,
             paid_pk: paid_signer.pk,
             domain: "http://127.0.0.1:8080".to_string(),
+            nostr_sk,
         };
 
         // generate valid blinded message
@@ -361,7 +363,7 @@ mod tests_integration {
 
         // nostr
         let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
-        let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
+        let nostr_sk = Keys::from_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
         let nostr = nostr_sdk::Client::new(&nostr_sk);
 
         // create blind signer
@@ -377,6 +379,7 @@ mod tests_integration {
             free_pk: free_signer.pk,
             paid_pk: paid_signer.pk,
             domain: "http://127.0.0.1:8080".to_string(),
+            nostr_sk,
         };
 
         // generate valid blinded message
@@ -423,7 +426,7 @@ mod tests_integration {
 
         // nostr
         let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
-        let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
+        let nostr_sk = Keys::from_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
         let nostr = nostr_sdk::Client::new(&nostr_sk);
 
         // create blind signer
@@ -439,6 +442,7 @@ mod tests_integration {
             free_pk: free_signer.pk,
             paid_pk: paid_signer.pk,
             domain: "http://127.0.0.1:8080".to_string(),
+            nostr_sk,
         };
 
         // generate valid blinded message

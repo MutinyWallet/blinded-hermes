@@ -1,6 +1,6 @@
 use axum::http::StatusCode;
 use axum::Json;
-use nostr::prelude::XOnlyPublicKey;
+use nostr::PublicKey;
 use serde_json::{json, Value};
 use std::{collections::HashMap, str::FromStr};
 
@@ -9,7 +9,7 @@ use crate::State;
 pub fn well_known_nip5(
     state: &State,
     name: String,
-) -> Result<HashMap<String, XOnlyPublicKey>, (StatusCode, Json<Value>)> {
+) -> Result<HashMap<String, PublicKey>, (StatusCode, Json<Value>)> {
     let user = state.db.get_user_by_name(name).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -21,7 +21,7 @@ pub fn well_known_nip5(
     if let Some(user) = user {
         names.insert(
             user.name,
-            XOnlyPublicKey::from_str(&user.pubkey).expect("valid npub"),
+            PublicKey::from_str(&user.pubkey).expect("valid npub"),
         );
     } else {
         return Err((
@@ -35,7 +35,7 @@ pub fn well_known_nip5(
 
 #[cfg(all(test, feature = "integration-tests"))]
 mod tests_integration {
-    use nostr::{key::FromSkStr, Keys};
+    use nostr::Keys;
     use secp256k1::{PublicKey, Secp256k1, XOnlyPublicKey};
     use std::{str::FromStr, sync::Arc};
 
@@ -55,7 +55,7 @@ mod tests_integration {
 
         // nostr
         let nostr_nsec_str = std::env::var("NSEC").expect("FM_DB_PATH must be set");
-        let nostr_sk = Keys::from_sk_str(&nostr_nsec_str).expect("Invalid NOSTR_SK");
+        let nostr_sk = Keys::parse(nostr_nsec_str).expect("Invalid NOSTR_SK");
         let nostr = nostr_sdk::Client::new(&nostr_sk);
 
         // create blind signer
@@ -71,6 +71,7 @@ mod tests_integration {
             free_pk: free_signer.pk,
             paid_pk: paid_signer.pk,
             domain: "http://127.0.0.1:8080".to_string(),
+            nostr_sk,
         };
 
         let username = "wellknownuser".to_string();
