@@ -1,7 +1,7 @@
 use crate::{
     lnurlp::{lnurl_callback, verify, well_known_lnurlp},
     nostr::well_known_nip5,
-    register::{check_available, check_registered_pubkey, register},
+    register::{check_available, check_registered_pubkey, get_user_by_pubkey, register},
     State, ALLOWED_LOCALHOST, ALLOWED_ORIGINS, ALLOWED_SUBDOMAIN, API_VERSION,
 };
 use axum::extract::{Path, Query};
@@ -10,14 +10,17 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::Extension;
 use axum::{Json, TypedHeader};
-use fedimint_core::Amount;
+use fedimint_core::{config::FederationId, Amount};
 use fedimint_ln_common::lightning_invoice::Bolt11Invoice;
 use log::{error, info};
+use nostr::{Event, Kind};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 use std::{collections::HashMap, fmt::Display, str::FromStr};
 use tbs::AggregatePublicKey;
 use url::Url;
+
+const REGISTRATION_CHECK_EVENT_KIND: Kind = Kind::Custom(93_186);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LnUrlErrorResponse {
@@ -65,6 +68,59 @@ pub async fn check_pubkey(
         Ok(res) => {
             info!("check_pubkey finished: {}", pubkey);
             Ok(Json(res))
+        }
+        Err(e) => Err(handle_anyhow_error("check_pubkey", e)),
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct RegistrationInfo {
+    pub name: Option<String>,
+    pub federation_id: Option<FederationId>,
+}
+
+pub async fn check_registration_info(
+    origin: Option<TypedHeader<Origin>>,
+    Extension(state): Extension<State>,
+    Json(event): Json<Event>,
+) -> Result<Json<RegistrationInfo>, (StatusCode, String)> {
+    validate_cors(origin)?;
+
+    let pubkey = event.author();
+    info!("check_registration_info: {}", pubkey);
+
+    if event.verify().is_err() && event.kind() != REGISTRATION_CHECK_EVENT_KIND {
+        error!("error in check_registration_info: bad event");
+        return Err((StatusCode::BAD_REQUEST, "Bad event".to_string()));
+    }
+
+    // make sure it was made in the last 30 seconds
+    let created_at = event.created_at();
+    let now = nostr::Timestamp::now();
+    if created_at < now - 120_i64 && created_at > now + 120_i64 {
+        error!("error in check_registration_info: event time not in range");
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Event time not in range".to_string(),
+        ));
+    }
+
+    match get_user_by_pubkey(&state, pubkey.to_string()) {
+        Ok(Some(u)) => {
+            info!("check_pubkey finished: {}", pubkey);
+
+            Ok(Json(RegistrationInfo {
+                name: Some(u.name),
+                federation_id: Some(u.federation_id),
+            }))
+        }
+        Ok(None) => {
+            info!("check_pubkey not found: {}", pubkey);
+
+            Ok(Json(RegistrationInfo {
+                name: None,
+                federation_id: None,
+            }))
         }
         Err(e) => Err(handle_anyhow_error("check_pubkey", e)),
     }
