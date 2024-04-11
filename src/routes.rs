@@ -2,8 +2,8 @@ use crate::{
     lnurlp::{lnurl_callback, verify, well_known_lnurlp},
     nostr::well_known_nip5,
     register::{
-        change_user_federation, check_available, check_registered_pubkey, ensure_added_federation,
-        get_user_by_pubkey, register,
+        change_user_federation, check_available, check_registered_pubkey, disable_user_zaps,
+        ensure_added_federation, get_user_by_pubkey, register,
     },
     State, ALLOWED_LOCALHOST, ALLOWED_ORIGINS, ALLOWED_SUBDOMAIN, API_VERSION,
 };
@@ -25,6 +25,7 @@ use url::Url;
 
 const REGISTRATION_CHECK_EVENT_KIND: Kind = Kind::Custom(93_186);
 const NEW_FEDERATION_EVENT_KIND: Kind = Kind::Custom(93_187);
+const DISABLE_ZAPS_EVENT_KIND: Kind = Kind::Custom(93_188);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LnUrlErrorResponse {
@@ -196,6 +197,57 @@ pub async fn change_federation(
             Err((StatusCode::NOT_FOUND, "User not found".to_string()))
         }
         Err(e) => Err(handle_anyhow_error("change_federation", e)),
+    }
+}
+
+pub async fn disable_zaps(
+    origin: Option<TypedHeader<Origin>>,
+    Extension(state): Extension<State>,
+    Json(event): Json<Event>,
+) -> Result<(), (StatusCode, String)> {
+    validate_cors(origin)?;
+
+    let pubkey = event.author();
+    info!("disable_zaps: {}", pubkey);
+
+    if event.verify().is_err() && event.kind() != DISABLE_ZAPS_EVENT_KIND {
+        error!("error in disable_zaps: bad event");
+        return Err((StatusCode::BAD_REQUEST, "Bad event".to_string()));
+    }
+
+    // make sure it was made recently
+    let created_at = event.created_at();
+    let now = nostr::Timestamp::now();
+    if created_at < now - 120_i64 && created_at > now + 120_i64 {
+        error!("error in disable_zaps: event time not in range");
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Event time not in range".to_string(),
+        ));
+    }
+
+    match get_user_by_pubkey(&state, pubkey.to_string()) {
+        Ok(Some(u)) => {
+            info!("disable_zaps found user for pubkey: {}", pubkey);
+
+            // got the user, now change the federation
+            match disable_user_zaps(&state, u) {
+                Ok(_) => {
+                    info!(
+                        "disable_zaps changed user federation for pubkey: {}",
+                        pubkey
+                    );
+                    Ok(())
+                }
+                Err(e) => Err(handle_anyhow_error("disable_zaps", e)),
+            }
+        }
+        Ok(None) => {
+            error!("disable_zaps not found: {}", pubkey);
+
+            Err((StatusCode::NOT_FOUND, "User not found".to_string()))
+        }
+        Err(e) => Err(handle_anyhow_error("disable_zaps", e)),
     }
 }
 
