@@ -17,8 +17,9 @@ use crate::{
     invoice::handle_pending_invoices,
     mint::{setup_multimint, MultiMintWrapperTrait},
     routes::{
-        check_pubkey, check_username, health_check, lnurl_callback_route, lnurl_verify_route,
-        register_route, root, validate_cors, well_known_lnurlp_route, well_known_nip5_route,
+        check_pubkey, check_registration_info, check_username, health_check, lnurl_callback_route,
+        lnurl_verify_route, register_route, root, validate_cors, well_known_lnurlp_route,
+        well_known_nip5_route,
     },
 };
 
@@ -168,7 +169,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/", get(root))
         .route("/health-check", get(health_check))
         .route("/v1/check-username/:username", get(check_username))
-        .route("/v1/check-pubkey/:pubkey", get(check_pubkey))
+        .route("/v1/check-pubkey/:pubkey", get(check_pubkey)) // DEPRECATED for check-registration
+        .route("/v1/check-registration", post(check_registration_info))
         .route("/v1/register", post(register_route))
         .route("/.well-known/nostr.json", get(well_known_nip5_route))
         .route(

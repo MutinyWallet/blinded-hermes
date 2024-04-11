@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use crate::{
-    models::app_user::NewAppUser,
+    models::app_user::{AppUser, NewAppUser},
     routes::{RegisterRequest, RegisterResponse},
     State,
 };
@@ -33,6 +33,10 @@ pub fn check_available(state: &State, name: String) -> anyhow::Result<bool> {
 
 pub fn check_registered_pubkey(state: &State, pubkey: String) -> anyhow::Result<Option<String>> {
     state.db.check_registered_pubkey(pubkey)
+}
+
+pub fn get_user_by_pubkey(state: &State, pubkey: String) -> anyhow::Result<Option<AppUser>> {
+    state.db.get_user_by_pubkey(pubkey)
 }
 
 pub fn generate_random_name(state: &State) -> anyhow::Result<String> {
