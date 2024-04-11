@@ -14,6 +14,7 @@ diesel::table! {
         #[max_length = 255]
         federation_invite_code -> Varchar,
         invoice_index -> Int4,
+        disabled_zaps -> Bool,
     }
 }
 

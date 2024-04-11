@@ -61,6 +61,12 @@ pub async fn lnurl_callback(
     }
     let user = user.expect("just checked");
 
+    if user.disabled_zaps {
+        return Err(anyhow!(
+            "Internal error: User has disabled their address temporarily"
+        ));
+    }
+
     let amount_msats = match params.amount {
         Some(amt) => amt,
         None => return Err(anyhow!(INVALID_AMT_ERR)),

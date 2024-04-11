@@ -17,6 +17,7 @@ pub struct AppUser {
     pub federation_id: String,
     pub federation_invite_code: String,
     pub invoice_index: i32,
+    pub disabled_zaps: bool,
 }
 
 impl AppUser {
@@ -99,7 +100,17 @@ impl AppUser {
             .set((
                 app_user::federation_id.eq(new_federation_id),
                 app_user::federation_invite_code.eq(new_federation_invite_code),
+                app_user::disabled_zaps.eq(false),
             ))
+            .execute(conn)?;
+
+        Ok(())
+    }
+
+    pub fn disable_zaps(&self, conn: &mut PgConnection) -> anyhow::Result<()> {
+        diesel::update(app_user::table)
+            .filter(app_user::name.eq(&self.name))
+            .set((app_user::disabled_zaps.eq(true),))
             .execute(conn)?;
 
         Ok(())
