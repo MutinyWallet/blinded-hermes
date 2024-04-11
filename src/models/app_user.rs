@@ -87,6 +87,23 @@ impl AppUser {
             .first::<AppUser>(conn)
             .optional()?)
     }
+
+    pub fn update_federation(
+        &self,
+        conn: &mut PgConnection,
+        new_federation_id: String,
+        new_federation_invite_code: String,
+    ) -> anyhow::Result<()> {
+        diesel::update(app_user::table)
+            .filter(app_user::name.eq(&self.name))
+            .set((
+                app_user::federation_id.eq(new_federation_id),
+                app_user::federation_invite_code.eq(new_federation_invite_code),
+            ))
+            .execute(conn)?;
+
+        Ok(())
+    }
 }
 
 #[derive(Insertable)]
