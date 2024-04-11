@@ -29,6 +29,7 @@ pub(crate) trait DBConnection {
         federation_id: String,
         federation_invite_code: String,
     ) -> anyhow::Result<()>;
+    fn disable_user_zaps(&self, user: AppUser) -> anyhow::Result<()>;
     fn get_user_and_increment_counter(&self, name: &str) -> anyhow::Result<Option<AppUser>>;
     fn insert_new_zap(&self, new_zap: Zap) -> anyhow::Result<Zap>;
     fn get_zap_by_id(&self, id: i32) -> anyhow::Result<Option<Zap>>;
@@ -71,6 +72,11 @@ impl DBConnection for PostgresConnection {
     ) -> anyhow::Result<()> {
         let conn = &mut self.db.get()?;
         user.update_federation(conn, federation_id, federation_invite_code)
+    }
+
+    fn disable_user_zaps(&self, user: AppUser) -> anyhow::Result<()> {
+        let conn = &mut self.db.get()?;
+        user.disable_zaps(conn)
     }
 
     fn get_pending_invoices(&self) -> anyhow::Result<Vec<Invoice>> {

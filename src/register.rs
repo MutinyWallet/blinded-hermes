@@ -50,6 +50,10 @@ pub fn change_user_federation(
         .update_user_federation(user, federation_id, federation_invite_code)
 }
 
+pub fn disable_user_zaps(state: &State, user: AppUser) -> anyhow::Result<()> {
+    state.db.disable_user_zaps(user)
+}
+
 pub fn generate_random_name(state: &State) -> anyhow::Result<String> {
     loop {
         let new_name = Generator::with_naming(names::Name::Numbered)
