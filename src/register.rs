@@ -39,6 +39,17 @@ pub fn get_user_by_pubkey(state: &State, pubkey: String) -> anyhow::Result<Optio
     state.db.get_user_by_pubkey(pubkey)
 }
 
+pub fn change_user_federation(
+    state: &State,
+    user: AppUser,
+    federation_id: String,
+    federation_invite_code: String,
+) -> anyhow::Result<()> {
+    state
+        .db
+        .update_user_federation(user, federation_id, federation_invite_code)
+}
+
 pub fn generate_random_name(state: &State) -> anyhow::Result<String> {
     loop {
         let new_name = Generator::with_naming(names::Name::Numbered)
@@ -122,23 +133,7 @@ pub async fn register(
         }
     };
     let federation_id = invite_code.federation_id();
-    if !state.mm.check_has_federation(federation_id).await {
-        let invite_code = match InviteCode::from_str(&req.federation_invite_code) {
-            Ok(i) => i,
-            Err(e) => {
-                error!("Error in register: {e:?}");
-                return Err((StatusCode::BAD_REQUEST, "InvalidFederation".to_string()));
-            }
-        };
-
-        match state.mm.register_new_federation(invite_code).await {
-            Ok(_) => (),
-            Err(e) => {
-                error!("Error in register: {e:?}");
-                return Err((StatusCode::BAD_REQUEST, "InvalidFederation".to_string()));
-            }
-        }
-    }
+    ensure_added_federation(state, federation_id, invite_code).await?;
 
     let new_user = NewAppUser {
         pubkey: req.pubkey,
@@ -156,6 +151,23 @@ pub async fn register(
             Err((StatusCode::INTERNAL_SERVER_ERROR, "ServerError".to_string()))
         }
     }
+}
+
+pub(crate) async fn ensure_added_federation(
+    state: &State,
+    federation_id: fedimint_core::config::FederationId,
+    invite_code: InviteCode,
+) -> Result<(), (StatusCode, String)> {
+    if !state.mm.check_has_federation(federation_id).await {
+        match state.mm.register_new_federation(invite_code).await {
+            Ok(_) => (),
+            Err(e) => {
+                error!("Error in register: {e:?}");
+                return Err((StatusCode::BAD_REQUEST, "InvalidFederation".to_string()));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(all(test, not(feature = "integration-tests")))]

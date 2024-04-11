@@ -1,7 +1,10 @@
 use crate::{
     lnurlp::{lnurl_callback, verify, well_known_lnurlp},
     nostr::well_known_nip5,
-    register::{check_available, check_registered_pubkey, get_user_by_pubkey, register},
+    register::{
+        change_user_federation, check_available, check_registered_pubkey, ensure_added_federation,
+        get_user_by_pubkey, register,
+    },
     State, ALLOWED_LOCALHOST, ALLOWED_ORIGINS, ALLOWED_SUBDOMAIN, API_VERSION,
 };
 use axum::extract::{Path, Query};
@@ -10,7 +13,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::Extension;
 use axum::{Json, TypedHeader};
-use fedimint_core::{config::FederationId, Amount};
+use fedimint_core::{api::InviteCode, config::FederationId, Amount};
 use fedimint_ln_common::lightning_invoice::Bolt11Invoice;
 use log::{error, info};
 use nostr::{Event, Kind};
@@ -21,6 +24,7 @@ use tbs::AggregatePublicKey;
 use url::Url;
 
 const REGISTRATION_CHECK_EVENT_KIND: Kind = Kind::Custom(93_186);
+const NEW_FEDERATION_EVENT_KIND: Kind = Kind::Custom(93_187);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LnUrlErrorResponse {
@@ -94,7 +98,7 @@ pub async fn check_registration_info(
         return Err((StatusCode::BAD_REQUEST, "Bad event".to_string()));
     }
 
-    // make sure it was made in the last 30 seconds
+    // make sure it was made recently
     let created_at = event.created_at();
     let now = nostr::Timestamp::now();
     if created_at < now - 120_i64 && created_at > now + 120_i64 {
@@ -111,7 +115,12 @@ pub async fn check_registration_info(
 
             Ok(Json(RegistrationInfo {
                 name: Some(u.name),
-                federation_id: Some(u.federation_id),
+                federation_id: Some(FederationId::from_str(&u.federation_id).map_err(|_| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "FederationId invalid".to_string(),
+                    )
+                })?),
             }))
         }
         Ok(None) => {
@@ -123,6 +132,70 @@ pub async fn check_registration_info(
             }))
         }
         Err(e) => Err(handle_anyhow_error("check_pubkey", e)),
+    }
+}
+
+pub async fn change_federation(
+    origin: Option<TypedHeader<Origin>>,
+    Extension(state): Extension<State>,
+    Json(event): Json<Event>,
+) -> Result<(), (StatusCode, String)> {
+    validate_cors(origin)?;
+
+    let pubkey = event.author();
+    info!("change_federation: {}", pubkey);
+
+    if event.verify().is_err() && event.kind() != NEW_FEDERATION_EVENT_KIND {
+        error!("error in change_federation: bad event");
+        return Err((StatusCode::BAD_REQUEST, "Bad event".to_string()));
+    }
+
+    // make sure it was made recently
+    let created_at = event.created_at();
+    let now = nostr::Timestamp::now();
+    if created_at < now - 120_i64 && created_at > now + 120_i64 {
+        error!("error in change_federation: event time not in range");
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Event time not in range".to_string(),
+        ));
+    }
+
+    // get the federation invite code and parse it
+    let federation_invite_code = InviteCode::from_str(event.content())
+        .map_err(|_| (StatusCode::BAD_REQUEST, "InviteCode Invalid".to_string()))?;
+    let federation_id = federation_invite_code.federation_id();
+
+    // make sure it's added to our federation list
+    ensure_added_federation(&state, federation_id, federation_invite_code.clone()).await?;
+
+    match get_user_by_pubkey(&state, pubkey.to_string()) {
+        Ok(Some(u)) => {
+            info!("change_federation found user for pubkey: {}", pubkey);
+
+            // got the user, now change the federation
+            match change_user_federation(
+                &state,
+                u,
+                federation_id.to_string(),
+                federation_invite_code.to_string(),
+            ) {
+                Ok(_) => {
+                    info!(
+                        "change_federation changed user federation for pubkey: {}, {}",
+                        pubkey, federation_id
+                    );
+                    Ok(())
+                }
+                Err(e) => Err(handle_anyhow_error("change_federation", e)),
+            }
+        }
+        Ok(None) => {
+            error!("change_federation not found: {}", pubkey);
+
+            Err((StatusCode::NOT_FOUND, "User not found".to_string()))
+        }
+        Err(e) => Err(handle_anyhow_error("change_federation", e)),
     }
 }
 
