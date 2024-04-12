@@ -65,3 +65,19 @@ For prod:
 ```
 flyctl deploy --config fly.production.toml
 ```
+
+If a migration is required: 
+
+```
+fly machine stop
+```
+
+Select all, hit enter. Run migration (command above). Deploy changes:
+
+```
+flyctl deploy
+```
+
+``
+fly machine start
+```
