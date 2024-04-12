@@ -82,6 +82,7 @@ pub async fn check_pubkey(
 pub struct RegistrationInfo {
     pub name: Option<String>,
     pub federation_id: Option<FederationId>,
+    pub disabled_zaps: bool,
 }
 
 pub async fn check_registration_info(
@@ -122,6 +123,7 @@ pub async fn check_registration_info(
                         "FederationId invalid".to_string(),
                     )
                 })?),
+                disabled_zaps: u.disabled_zaps,
             }))
         }
         Ok(None) => {
@@ -130,6 +132,7 @@ pub async fn check_registration_info(
             Ok(Json(RegistrationInfo {
                 name: None,
                 federation_id: None,
+                disabled_zaps: true,
             }))
         }
         Err(e) => Err(handle_anyhow_error("check_pubkey", e)),
