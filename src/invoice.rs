@@ -4,16 +4,9 @@ use anyhow::{anyhow, Result};
 use fedimint_client::oplog::UpdateStreamOrOutcome;
 use fedimint_core::{config::FederationId, task::spawn};
 use fedimint_ln_client::{LightningClientModule, LnReceiveState};
-use fedimint_ln_common::bitcoin::hashes::sha256::Hash as Sha256;
-use fedimint_ln_common::bitcoin::hashes::Hash;
-use fedimint_ln_common::bitcoin::secp256k1::{Secp256k1, SecretKey};
-use fedimint_ln_common::lightning_invoice::{Currency, InvoiceBuilder, PaymentSecret};
 use futures::StreamExt;
 use itertools::Itertools;
 use log::{error, info};
-use nostr::prelude::rand::rngs::OsRng;
-use nostr::prelude::rand::RngCore;
-use nostr::Keys;
 use nostr::{Event, EventBuilder, JsonUtil};
 use nostr_sdk::Client;
 use serde::{Deserialize, Serialize};
@@ -162,7 +155,12 @@ async fn notify_user(
     // Send zap if needed
     if let Some(zap) = zap {
         let request = Event::from_json(&zap.request)?;
-        let event = create_zap_event(request, invoice.amount as u64, &state.nostr_sk)?;
+        let event = EventBuilder::zap_receipt(
+            invoice.bolt11.to_string(),
+            Some(invoice.preimage.clone()),
+            request,
+        )
+        .to_event(&state.nostr_sk)?;
 
         let event_id = nostr.send_event(event).await?;
         info!("Broadcasted zap {event_id}!");
@@ -172,38 +170,4 @@ async fn notify_user(
 
     info!("Sent nostr dm: {dm}");
     Ok(())
-}
-
-/// Creates a nostr zap event with a fake invoice
-fn create_zap_event(request: Event, amt_msats: u64, nsec: &Keys) -> Result<Event> {
-    let preimage = &mut [0u8; 32];
-    OsRng.fill_bytes(preimage);
-    let invoice_hash = Sha256::hash(preimage);
-
-    let payment_secret = &mut [0u8; 32];
-    OsRng.fill_bytes(payment_secret);
-
-    let priv_key_bytes = &mut [0u8; 32];
-    OsRng.fill_bytes(priv_key_bytes);
-    let private_key = SecretKey::from_slice(priv_key_bytes)?;
-
-    let desc_hash = Sha256::hash(request.as_json().as_bytes());
-
-    let fake_invoice = InvoiceBuilder::new(Currency::Bitcoin)
-        .amount_milli_satoshis(amt_msats)
-        .description_hash(desc_hash)
-        .current_timestamp()
-        .payment_hash(invoice_hash)
-        .payment_secret(PaymentSecret(*payment_secret))
-        .min_final_cltv_expiry_delta(144)
-        .build_signed(|hash| Secp256k1::new().sign_ecdsa_recoverable(hash, &private_key))?;
-
-    let event = EventBuilder::zap_receipt(
-        fake_invoice.to_string(),
-        Some(hex::encode(preimage)),
-        request,
-    )
-    .to_event(nsec)?;
-
-    Ok(event)
 }
