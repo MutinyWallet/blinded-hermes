@@ -37,7 +37,7 @@ pub async fn well_known_lnurlp(
         max_sendable: Amount { msats: MAX_AMOUNT },
         min_sendable: Amount { msats: MIN_AMOUNT },
         metadata: calc_metadata(&name, &state.domain_no_http()),
-        comment_allowed: None,
+        comment_allowed: Some(MAX_COMMENT_LEN),
         tag: LnurlType::PayRequest,
         status: LnurlStatus::Ok,
         nostr_pubkey: Some(state.nostr_sk.public_key()),
@@ -49,6 +49,7 @@ pub async fn well_known_lnurlp(
 
 const MAX_AMOUNT: u64 = 100_000_000 * 1_000; // 1 BTC
 const MIN_AMOUNT: u64 = 5_000; // 5 sats
+const MAX_COMMENT_LEN: i32 = 100;
 
 pub async fn lnurl_callback(
     state: &State,
@@ -84,6 +85,12 @@ pub async fn lnurl_callback(
             .is_some_and(|n| Event::from_json(n).is_ok_and(|e| e.kind == Kind::ZapRequest))
     {
         return Err(anyhow::anyhow!("Invalid nostr event"));
+    }
+
+    if let Some(comment) = params.comment.as_ref() {
+        if comment.len() > MAX_COMMENT_LEN as usize {
+            return Err(anyhow::anyhow!("Comment too long"))
+        }
     }
 
     let federation_id = FederationId::from_str(&user.federation_id)
@@ -134,6 +141,7 @@ pub async fn lnurl_callback(
         bolt11: pr.to_string(),
         amount: amount_msats as i64,
         state: InvoiceState::Pending as i32,
+        lnurlp_comment: params.comment
     };
 
     let created_invoice = state.db.insert_new_invoice(new_invoice)?;
