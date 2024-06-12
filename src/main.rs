@@ -93,7 +93,7 @@ async fn main() -> anyhow::Result<()> {
 
     // get values key from env
     let pg_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let port: u16 = std::env::var("VSS_PORT")
+    let port: u16 = std::env::var("HERMES_PORT")
         .ok()
         .map(|p| p.parse::<u16>())
         .transpose()?
