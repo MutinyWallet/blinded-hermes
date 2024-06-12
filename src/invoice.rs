@@ -146,6 +146,7 @@ async fn notify_user(
                 "bolt11": invoice.bolt11,
                 "preimage": invoice.preimage,
                 "zap_request": zap.as_ref().map(|z| z.request.clone()),
+                "lnurlp_comment": invoice.lnurlp_comment
             })
             .to_string(),
             None,

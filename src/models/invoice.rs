@@ -19,6 +19,7 @@ pub struct Invoice {
     pub bolt11: String,
     pub amount: i64,
     pub state: i32,
+    pub lnurlp_comment: Option<String>
 }
 
 impl Invoice {
@@ -74,6 +75,7 @@ pub struct NewInvoice {
     pub bolt11: String,
     pub amount: i64,
     pub state: i32,
+    pub lnurlp_comment: Option<String>
 }
 
 impl NewInvoice {
