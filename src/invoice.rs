@@ -7,7 +7,7 @@ use fedimint_ln_client::{LightningClientModule, LnReceiveState};
 use futures::StreamExt;
 use itertools::Itertools;
 use log::{error, info};
-use nostr::{Event, EventBuilder, JsonUtil};
+use nostr::{Alphabet, Event, EventBuilder, JsonUtil, Kind, SingleLetterTag, Tag, TagKind};
 use nostr_sdk::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -155,7 +155,7 @@ async fn notify_user(
     // Send zap if needed
     if let Some(zap) = zap {
         let request = Event::from_json(&zap.request)?;
-        let event = EventBuilder::zap_receipt(
+        let event = create_zap_receipt(
             invoice.bolt11.to_string(),
             Some(invoice.preimage.clone()),
             request,
@@ -170,4 +170,77 @@ async fn notify_user(
 
     info!("Sent nostr dm: {dm}");
     Ok(())
+}
+
+// Needed to copy this from rust-nostr but add the `a` tag ourselves
+// Latest version of rust-nostr has this fix but we're unable to update because of other problems
+fn create_zap_receipt(
+    invoice: String,
+    preimage: Option<String>,
+    zap_request: Event,
+) -> EventBuilder {
+    let mut tags = vec![
+        Tag::Bolt11(invoice),
+        Tag::Description(zap_request.as_json()),
+    ];
+
+    // add preimage tag if provided
+    if let Some(pre_image_tag) = preimage {
+        tags.push(Tag::Preimage(pre_image_tag))
+    }
+
+    // add e tag
+    if let Some(tag) = zap_request
+        .iter_tags()
+        .find(|t| {
+            t.kind()
+                == TagKind::SingleLetter(SingleLetterTag {
+                    character: Alphabet::E,
+                    uppercase: false,
+                })
+        })
+        .cloned()
+    {
+        tags.push(tag);
+    }
+
+    // add a tag
+    if let Some(tag) = zap_request
+        .iter_tags()
+        .find(|t| {
+            t.kind()
+                == TagKind::SingleLetter(SingleLetterTag {
+                    character: Alphabet::A,
+                    uppercase: false,
+                })
+        })
+        .cloned()
+    {
+        tags.push(tag);
+    }
+
+    // add p tag
+    if let Some(tag) = zap_request
+        .iter_tags()
+        .find(|t| {
+            t.kind()
+                == TagKind::SingleLetter(SingleLetterTag {
+                    character: Alphabet::P,
+                    uppercase: false,
+                })
+        })
+        .cloned()
+    {
+        tags.push(tag);
+    }
+
+    // add P tag
+    tags.push(Tag::PublicKey {
+        public_key: zap_request.author(),
+        relay_url: None,
+        alias: None,
+        uppercase: true,
+    });
+
+    EventBuilder::new(Kind::ZapReceipt, "", tags)
 }
