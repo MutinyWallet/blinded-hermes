@@ -46,3 +46,13 @@ names = "0.14.0"
 [dev-dependencies]
 mockall = "0.11.2"
 mockito = "1.2.0"
+
+[patch.crates-io]
+fedimint-client = { git = 'https://github.com/MutinyWallet/fedimint.git', rev = "450d9f6d3b6252ad3d80f2e96717722cbb6dd9cf" }
+fedimint-core = { git = 'https://github.com/MutinyWallet/fedimint.git', rev = "450d9f6d3b6252ad3d80f2e96717722cbb6dd9cf" }
+fedimint-wallet-client = { git = 'https://github.com/MutinyWallet/fedimint.git', rev = "450d9f6d3b6252ad3d80f2e96717722cbb6dd9cf" }
+fedimint-mint-client = { git = 'https://github.com/MutinyWallet/fedimint.git', rev = "450d9f6d3b6252ad3d80f2e96717722cbb6dd9cf" }
+fedimint-ln-client = { git = 'https://github.com/MutinyWallet/fedimint.git', rev = "450d9f6d3b6252ad3d80f2e96717722cbb6dd9cf" }
+fedimint-bip39 = { git = 'https://github.com/MutinyWallet/fedimint.git', rev = "450d9f6d3b6252ad3d80f2e96717722cbb6dd9cf" }
+fedimint-ln-common = { git = 'https://github.com/MutinyWallet/fedimint.git', rev = "450d9f6d3b6252ad3d80f2e96717722cbb6dd9cf" }
+fedimint-tbs = { git = 'https://github.com/MutinyWallet/fedimint.git', rev = "450d9f6d3b6252ad3d80f2e96717722cbb6dd9cf" }
