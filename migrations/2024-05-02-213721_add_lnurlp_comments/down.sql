@@ -1,0 +1,1 @@
+ALTER TABLE "invoice" DROP COLUMN "lnurlp_comment";

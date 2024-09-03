@@ -33,6 +33,8 @@ diesel::table! {
         bolt11 -> Varchar,
         amount -> Int8,
         state -> Int4,
+        #[max_length = 100]
+        lnurlp_comment -> Nullable<Varchar>,
     }
 }
 
